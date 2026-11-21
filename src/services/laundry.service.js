@@ -568,6 +568,7 @@ export const findAll = async (user, query) => {
       'rooms.room_type'
     )
     .orderBy('laundry_requests.created_at', 'desc')
+    .orderBy('laundry_requests.id', 'desc')
     .limit(limit)
     .offset(offset);
 

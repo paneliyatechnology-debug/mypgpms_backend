@@ -383,6 +383,7 @@ export const findAll = async (options = {}) => {
     )
     .groupBy('rooms.id')
     .orderBy('rooms.created_at', 'desc')
+    .orderBy('rooms.id', 'desc')
     .limit(per_page)
     .offset(offset);
 
@@ -721,7 +722,7 @@ export const getBuildingsAndFloors = async (options = {}) => {
       'buildings.pg_id',
       'pgs.name as pg_name'
     )
-    .orderBy('buildings.name', 'asc');
+    .orderBy('buildings.id', 'desc');
 
   const buildings = await buildings_query;
   const buildingIds = buildings.map((b) => b.building_id);

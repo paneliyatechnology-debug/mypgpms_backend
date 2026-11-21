@@ -1915,12 +1915,13 @@ class UserService {
     const totalRow = await base.clone().count('users.id as total').first();
     const total = parseInt(totalRow?.total || 0, 10);
 
-    const sortColumn = isResident ? 'users.name' : 'users.id';
-    const sortOrder = isResident ? 'asc' : 'desc';
+    const sortOrder = String(query.order || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
+    const sortColumn = query.sort_by === 'name' ? 'users.name' : 'users.id';
 
     const rows = await base.clone()
       .select('users.*')
       .orderBy(sortColumn, sortOrder)
+      .orderBy('users.id', sortOrder)
       .limit(per_page)
       .offset(offset);
 

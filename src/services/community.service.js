@@ -178,6 +178,7 @@ class CommunityService {
         db.raw('CASE WHEN community_post_likes.id IS NOT NULL THEN 1 ELSE 0 END as is_liked')
       )
       .orderBy('community_posts.created_at', 'desc')
+      .orderBy('community_posts.id', 'desc')
       .limit(limit)
       .offset(offset);
 
@@ -504,6 +505,8 @@ class CommunityService {
     const totalRecords = parseInt(countRes?.total || 0, 10);
     const totalPages = Math.ceil(totalRecords / limit) || 1;
 
+    const sortOrder = String(query.order || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
+
     const rows = await baseQuery.clone()
       .leftJoin('users', 'community_post_comments.user_id', 'users.id')
       .leftJoin('resident_pg_stays', function () {
@@ -518,7 +521,8 @@ class CommunityService {
         'users.profile_photo as author_photo',
         'rooms.room_no as author_room_no'
       )
-      .orderBy('community_post_comments.created_at', 'asc')
+      .orderBy('community_post_comments.created_at', sortOrder)
+      .orderBy('community_post_comments.id', sortOrder)
       .limit(limit)
       .offset(offset);
 

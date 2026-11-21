@@ -469,6 +469,7 @@ class AuditService {
           'actor.profile_photo as user_profile_photo'
         )
         .orderBy('audit_logs.created_at', 'desc')
+        .orderBy('audit_logs.id', 'desc')
         .limit(per_page)
         .offset(offset),
       count_query.count('audit_logs.id as total'),
@@ -769,7 +770,6 @@ class AuditService {
       'Module',
       'Details',
       'Timestamp',
-      'IP address',
       'Branch',
     ];
     const headerRow = worksheet.getRow(7);
@@ -804,7 +804,6 @@ class AuditService {
         r.module,
         r.details,
         r.timestamp,
-        r.ip_address,
         r.branch_name,
       ];
 
@@ -813,7 +812,7 @@ class AuditService {
         cell.border = {
           bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
         };
-        if ([1, 6, 7].includes(colNumber)) {
+        if ([1, 6].includes(colNumber)) {
           cell.alignment = { vertical: 'middle', horizontal: 'center' };
         } else {
           cell.alignment = { vertical: 'middle', horizontal: 'left' };
@@ -824,13 +823,12 @@ class AuditService {
     // Column Widths
     worksheet.columns = [
       { width: 8 },  // 1: Sr no.
-      { width: 22 }, // 2: User
-      { width: 26 }, // 3: Action
+      { width: 24 }, // 2: User
+      { width: 28 }, // 3: Action
       { width: 18 }, // 4: Module
-      { width: 36 }, // 5: Details
+      { width: 44 }, // 5: Details
       { width: 24 }, // 6: Timestamp
-      { width: 16 }, // 7: IP address
-      { width: 22 }, // 8: Branch
+      { width: 24 }, // 7: Branch
     ];
 
     const filename = `administrative-activity-log-${Date.now()}.xlsx`;
@@ -924,13 +922,12 @@ class AuditService {
 
     const columns = [
       { label: 'Sr no.', width: 35, align: 'center' },
-      { label: 'User', width: 105, align: 'left' },
+      { label: 'User', width: 120, align: 'left' },
       { label: 'Action', width: 125, align: 'left' },
       { label: 'Module', width: 80, align: 'center' },
-      { label: 'Details', width: 205, align: 'left' },
+      { label: 'Details', width: 250, align: 'left' },
       { label: 'Timestamp', width: 110, align: 'center' },
-      { label: 'IP address', width: 75, align: 'center' },
-      { label: 'Branch', width: 58, align: 'left' },
+      { label: 'Branch', width: 73, align: 'left' },
     ];
 
     const drawHeader = (doc, isFirstPage) => {
@@ -1049,17 +1046,9 @@ class AuditService {
       });
       curX += columns[5].width;
 
-      // 7. IP address
-      doc.fillColor(textMuted).font(fontRegular).fontSize(6.5).text(r.ip_address || '-', curX, currentY + 6, {
-        width: columns[6].width,
-        align: 'center',
-        lineBreak: false,
-      });
-      curX += columns[6].width;
-
-      // 8. Branch
+      // 7. Branch
       doc.fillColor(textTitle).font(fontRegular).fontSize(6.5).text(r.branch_name || '-', curX + 2, currentY + 6, {
-        width: columns[7].width - 4,
+        width: columns[6].width - 4,
         lineBreak: false,
       });
 

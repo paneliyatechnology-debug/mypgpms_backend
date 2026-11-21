@@ -263,12 +263,14 @@ class FoodMenuService {
     const count_res = await base_query.clone().count('food_menus.id as total').first();
     const total = count_res ? parseInt(count_res.total, 10) : 0;
 
+    const sortDirection = String(query.order || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+
     const allItems = await base_query
       .clone()
       .select('food_menus.*')
-      .orderBy('food_menus.menu_date', 'asc')
-      .orderBy('food_menus.sort_order', 'asc')
-      .orderBy('food_menus.id', 'asc')
+      .orderBy('food_menus.menu_date', sortDirection)
+      .orderBy('food_menus.sort_order', sortDirection)
+      .orderBy('food_menus.id', sortDirection)
       .limit(per_page)
       .offset(offset);
 
