@@ -128,6 +128,9 @@ class VisitorService {
         id: room_id,
         room_no: room_no,
         room_type: room_type,
+        building_name: row.building_name || null,
+        floor_name: row.floor_name || (row.floor_number !== undefined && row.floor_number !== null ? `Floor ${row.floor_number}` : null),
+        floor_number: row.floor_number !== undefined && row.floor_number !== null ? Number(row.floor_number) : null,
       },
       pg: {
         id: row.pg_id,
@@ -169,6 +172,12 @@ class VisitorService {
         join.on(db.raw('COALESCE(visitors.room_id, stay.room_id)'), '=', 'rooms.id')
           .andOnNull('rooms.deleted_at');
       })
+      .leftJoin('buildings', (join) => {
+        join.on('rooms.building_id', '=', 'buildings.id').andOnNull('buildings.deleted_at');
+      })
+      .leftJoin('floors', (join) => {
+        join.on('rooms.floor_id', '=', 'floors.id').andOnNull('floors.deleted_at');
+      })
       .select(
         'visitors.*',
         'resident.name as resident_name',
@@ -181,7 +190,10 @@ class VisitorService {
         'pgs.owner_id',
         'rooms.id as resident_room_id',
         'rooms.room_no',
-        'rooms.room_type'
+        'rooms.room_type',
+        'buildings.name as building_name',
+        'floors.name as floor_name',
+        'floors.floor_number'
       );
   };
 
