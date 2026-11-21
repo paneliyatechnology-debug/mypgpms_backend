@@ -229,6 +229,7 @@ class FoodMenuService {
       meal_type,
       page = 1,
       limit = 30,
+      order = 'asc',
     } = options;
 
     const branchContext = await this.resolveBranchContext(user, branch_id);
@@ -263,7 +264,7 @@ class FoodMenuService {
     const count_res = await base_query.clone().count('food_menus.id as total').first();
     const total = count_res ? parseInt(count_res.total, 10) : 0;
 
-    const sortDirection = String(query.order || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+    const sortDirection = String(order || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
 
     const allItems = await base_query
       .clone()
