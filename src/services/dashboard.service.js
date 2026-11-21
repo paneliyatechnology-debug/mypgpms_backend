@@ -233,7 +233,7 @@ class DashboardService {
     // 6. Open / Pending Complaints
     const complaintsQuery = db('complaints')
       .where('complaints.pg_id', pgId)
-      .whereIn('complaints.status', ['PENDING', 'OPEN', 'IN_PROGRESS'])
+      .whereIn('complaints.status', ['PENDING', 'IN_PROGRESS'])
       .whereNull('complaints.deleted_at');
 
     if (targetBranchId) {
@@ -661,7 +661,7 @@ class DashboardService {
           id: recentComplaintRow.id,
           ticket_number: recentComplaintRow.complaint_number || `#CL-${recentComplaintRow.id}`,
           title: recentComplaintRow.title,
-          status: recentComplaintRow.status === 'IN_PROGRESS' ? 'In Progress' : (recentComplaintRow.status === 'RESOLVED' ? 'Resolved' : 'Open'),
+          status: recentComplaintRow.status === 'IN_PROGRESS' ? 'In Progress' : (recentComplaintRow.status === 'RESOLVED' ? 'Resolved' : 'Pending'),
           location_and_time: `${recentComplaintRow.room_no ? `Room ${recentComplaintRow.room_no} • ` : ''}${moment(recentComplaintRow.created_at).format('DD MMMM YYYY, hh:mm A')}`,
           created_at: recentComplaintRow.created_at,
         }

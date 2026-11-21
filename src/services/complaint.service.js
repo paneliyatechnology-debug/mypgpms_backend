@@ -406,8 +406,7 @@ class ComplaintService {
 
         // Status Filter
         if (status && status.toUpperCase() !== 'ALL') {
-          const s = status.toUpperCase() === 'OPEN' ? 'PENDING' : status.toUpperCase();
-          qb.where('complaints.status', s);
+          qb.where('complaints.status', status.toUpperCase());
         }
 
         // Category Filter
@@ -695,7 +694,7 @@ class ComplaintService {
     const counts = await base.clone()
       .select(
         db.raw('COUNT(id) as total_complaints'),
-        db.raw('COUNT(CASE WHEN status = "PENDING" OR status = "OPEN" THEN 1 END) as pending_complaints'),
+        db.raw('COUNT(CASE WHEN status = "PENDING" THEN 1 END) as pending_complaints'),
         db.raw('COUNT(CASE WHEN status = "IN_PROGRESS" THEN 1 END) as in_progress_complaints'),
         db.raw('COUNT(CASE WHEN status = "RESOLVED" THEN 1 END) as resolved_complaints'),
         db.raw('COUNT(CASE WHEN status != "RESOLVED" AND due_date IS NOT NULL AND due_date < NOW() THEN 1 END) as overdue_complaints')
@@ -715,8 +714,6 @@ class ComplaintService {
       total_complaints: totalCount,
       pending: pendingCount,
       pending_complaints: pendingCount,
-      open: pendingCount,
-      open_complaints: pendingCount,
       in_progress: inProgressCount,
       in_progress_complaints: inProgressCount,
       resolved: resolvedCount,
@@ -844,8 +841,7 @@ class ComplaintService {
     }
 
     const oldStatus = complaint.status;
-    let newStatus = data.status.toUpperCase();
-    if (newStatus === 'OPEN') newStatus = 'PENDING';
+    const newStatus = data.status.toUpperCase();
 
     if (oldStatus === newStatus) {
       return { id, status: newStatus, message: `Status is already ${newStatus}` };

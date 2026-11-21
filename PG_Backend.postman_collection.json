@@ -5740,7 +5740,7 @@
                 "status"
               ]
             },
-            "description": "### Admin - Update Complaint Status\nTransitions complaint status between `PENDING`, `IN_PROGRESS`, and `RESOLVED`.\n\n#### Path Parameters:\n- `id` **[REQUIRED]**: Complaint ID.\n\n#### Request Body (JSON):\n- `status` **[REQUIRED]**: Enum: `OPEN`, `IN_PROGRESS`, `RESOLVED`.\n- `resolution_notes` **[OPTIONAL]**: Detailed comments describing steps taken or resolution summary (max 1000 characters).\n\n#### Permissions:\n- Admin / Super Admin / Assigned Staff."
+            "description": "### Admin - Update Complaint Status\nTransitions complaint status between `PENDING`, `IN_PROGRESS`, and `RESOLVED`.\n\n#### Path Parameters:\n- `id` **[REQUIRED]**: Complaint ID.\n\n#### Request Body (JSON):\n- `status` **[REQUIRED]**: Enum: `PENDING`, `IN_PROGRESS`, `RESOLVED`.\n- `resolution_notes` **[OPTIONAL]**: Detailed comments describing steps taken or resolution summary (max 1000 characters).\n\n#### Permissions:\n- Admin / Super Admin / Assigned Staff."
           },
           "response": []
         },

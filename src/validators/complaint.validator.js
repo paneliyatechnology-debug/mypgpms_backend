@@ -51,7 +51,6 @@ export const listComplaintsQueryValidator = [
     .optional({ checkFalsy: true })
     .trim()
     .toUpperCase()
-    .customSanitizer((val) => (val === 'OPEN' ? 'PENDING' : val))
     .isIn(['ALL', ...COMPLAINT_STATUSES])
     .withMessage(`Status filter must be ALL or one of: ${COMPLAINT_STATUSES.join(', ')}`),
 
@@ -111,7 +110,6 @@ export const updateStatusValidator = [
     .notEmpty()
     .withMessage('Status is required')
     .toUpperCase()
-    .customSanitizer((val) => (val === 'OPEN' ? 'PENDING' : val))
     .isIn(COMPLAINT_STATUSES)
     .withMessage(`Status must be one of: ${COMPLAINT_STATUSES.join(', ')}`),
 
