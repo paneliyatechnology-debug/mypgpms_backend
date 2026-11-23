@@ -9,7 +9,7 @@ import { HTTP_STATUS, ROLES, AUDIT_MODULES, AUDIT_ACTIONS } from '../constants/i
 import { buildFileUrl } from '../utils/url.js';
 
 /**
- * Friendly Module Names matching HomeNest UI design
+ * Friendly Module Names matching MyPGPMS UI design
  */
 const MODULE_DISPLAY_MAP = {
   AUTH: 'Authentication',
@@ -679,7 +679,7 @@ class AuditService {
   exportAuditsExcel = async (user, query = {}) => {
     const is_admin = user.role === ROLES.ADMIN;
     let effectivePgId = query.pg_id ? Number(query.pg_id) : undefined;
-    let pgName = 'HomeNest PG';
+    let pgName = 'MyPGPMS PG';
 
     if (is_admin) {
       const pg = await this.resolveAdminPg(user);
@@ -713,7 +713,7 @@ class AuditService {
     const stats = await this.getStats(user, query);
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'HomeNest PG Management';
+    workbook.creator = 'MyPGPMS PG Management';
     workbook.created = moment().toDate();
 
     const worksheet = workbook.addWorksheet('Activity Log', {
@@ -723,7 +723,7 @@ class AuditService {
     // 1. Title Row
     worksheet.mergeCells('A1:H1');
     const titleCell = worksheet.getCell('A1');
-    titleCell.value = 'HomeNest - Administrative Activity Log';
+    titleCell.value = 'MyPGPMS - Administrative Activity Log';
     titleCell.font = { name: 'Segoe UI', size: 16, bold: true, color: { argb: 'FF166534' } };
     titleCell.alignment = { vertical: 'middle' };
     worksheet.getRow(1).height = 32;
@@ -861,7 +861,7 @@ class AuditService {
   exportAuditsPdf = async (user, query = {}) => {
     const is_admin = user.role === ROLES.ADMIN;
     let effectivePgId = query.pg_id ? Number(query.pg_id) : undefined;
-    let pgName = 'HomeNest PG';
+    let pgName = 'MyPGPMS PG';
 
     if (is_admin) {
       const pg = await this.resolveAdminPg(user);
@@ -933,7 +933,7 @@ class AuditService {
     const drawHeader = (doc, isFirstPage) => {
       if (isFirstPage) {
         // Document Title
-        doc.fillColor(brandDark).font(fontBold).fontSize(14).text('HomeNest — Administrative Activity Log', startX, 20, { lineBreak: false });
+        doc.fillColor(brandDark).font(fontBold).fontSize(14).text('MyPGPMS — Administrative Activity Log', startX, 20, { lineBreak: false });
         doc.fillColor(textMuted).font(fontRegular).fontSize(7.5).text(
           `Facility: ${pgName} | Track all admin actions and system changes | Generated: ${moment().format('DD MMM YYYY, hh:mm A')}`,
           startX,

@@ -269,7 +269,7 @@ class VisitorService {
     if (['approved', 'in_office'].includes(status)) {
       qr_code = await VisitorService.generateQrCodeFile(
         {
-          type: 'HOMENEST_VISITOR_PASS',
+          type: 'MYPGPMS_VISITOR_PASS',
           pass_code,
           visitor_name: data.visitor_name,
           visitor_phone: data.visitor_phone,
@@ -712,7 +712,7 @@ class VisitorService {
       if (!qr_code || qr_code.startsWith('data:')) {
         qr_code = await VisitorService.generateQrCodeFile(
           {
-            type: 'HOMENEST_VISITOR_PASS',
+            type: 'MYPGPMS_VISITOR_PASS',
             pass_code,
             visitor_name: existing.visitor_name,
             visitor_phone: existing.visitor_phone,

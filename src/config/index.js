@@ -26,7 +26,7 @@ const config = {
   brevo: {
     apiKey: process.env.BREVO_API_KEY || '',
     senderEmail: process.env.BREVO_SENDER_EMAIL || 'jasminkorat04@gmail.com',
-    fromName: process.env.FROM_NAME || 'HomeNest',
+    fromName: process.env.FROM_NAME || 'MyPGPMS',
   },
   jwt: {
     secret: process.env.JWT_SECRET || 'default_jwt_secret_key_change_in_production',

@@ -43,7 +43,7 @@ const resolveUserBranches = async (user, trx) => {
 
   if (user.role === ROLES.SUPER_ADMIN) {
     const pg = await query('pgs').whereNull('deleted_at').orderBy('id', 'asc').first();
-    return { isSuperAdmin: true, branchIds: null, pgId: pg?.id || null, pgName: pg?.name || 'HomeNest PG' };
+    return { isSuperAdmin: true, branchIds: null, pgId: pg?.id || null, pgName: pg?.name || 'MyPGPMS PG' };
   }
 
   if (user.role === ROLES.ADMIN) {
@@ -67,7 +67,7 @@ const resolveUserBranches = async (user, trx) => {
       .whereNull('deleted_at')
       .select('id');
     const branchIds = branches.map((b) => b.id);
-    return { isSuperAdmin: false, branchIds, pgId: pg.id, pgName: pg.name || 'HomeNest PG' };
+    return { isSuperAdmin: false, branchIds, pgId: pg.id, pgName: pg.name || 'MyPGPMS PG' };
   }
 
   if (user.role === ROLES.STAFF || user.staff_role === STAFF_ROLES.BRANCH_MANAGER || user.role === ROLES.BRANCH_MANAGER) {
@@ -80,7 +80,7 @@ const resolveUserBranches = async (user, trx) => {
       const branch = await query('branches').where({ id: branchIds[0] }).first();
       if (branch) pg = await query('pgs').where({ id: branch.pg_id }).whereNull('deleted_at').first();
     }
-    return { isSuperAdmin: false, branchIds, pgId: pg?.id || user.pg_id || null, pgName: pg?.name || 'HomeNest PG' };
+    return { isSuperAdmin: false, branchIds, pgId: pg?.id || user.pg_id || null, pgName: pg?.name || 'MyPGPMS PG' };
   }
 
   if (user.role === ROLES.RESIDENT) {
@@ -592,7 +592,7 @@ class StayService {
       .leftJoin('buildings', 'rooms.building_id', 'buildings.id')
       .leftJoin('branches', 'checkout_requests.branch_id', 'branches.id');
 
-    let context = { isSuperAdmin: false, branchIds: [], pgId: null, pgName: 'HomeNest PG' };
+    let context = { isSuperAdmin: false, branchIds: [], pgId: null, pgName: 'MyPGPMS PG' };
 
     // Tenant / Branch / Resident scoping
     if (user.role === ROLES.RESIDENT) {
@@ -776,7 +776,7 @@ class StayService {
       const requestedFormat = (query.format || 'excel').toLowerCase();
       const format = requestedFormat === 'pdf' ? 'pdf' : 'excel';
       const exportOptions = {
-        pg_name: context.pgName || 'HomeNest PG',
+        pg_name: context.pgName || 'MyPGPMS PG',
         status: query.status || 'all',
         start_date: query.start_date || null,
         end_date: query.end_date || null,
@@ -848,7 +848,7 @@ class StayService {
     totalRefunds = parseFloat(totalRefunds.toFixed(2));
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'HomeNest PG Management';
+    workbook.creator = 'MyPGPMS PG Management';
     workbook.created = moment().toDate();
 
     const worksheet = workbook.addWorksheet('Checkout Approvals', {
@@ -858,7 +858,7 @@ class StayService {
     // Title Row
     worksheet.mergeCells('A1:J1');
     const titleCell = worksheet.getCell('A1');
-    titleCell.value = 'HomeNest - Checkout and Refund Approvals Report';
+    titleCell.value = 'MyPGPMS - Checkout and Refund Approvals Report';
     titleCell.font = { name: 'Segoe UI', size: 16, bold: true, color: { argb: 'FF0D9488' } };
     titleCell.alignment = { vertical: 'middle' };
     worksheet.getRow(1).height = 30;
@@ -874,7 +874,7 @@ class StayService {
     } else if (options.end_date) {
       periodInfo = ` | Until: ${formatDisplayDate(options.end_date)}`;
     }
-    subCell.value = `Facility: ${options.pg_name || 'HomeNest PG'} | Status: ${(options.status || 'All').toUpperCase()}${periodInfo} | Generated: ${moment().format('DD/MM/YYYY HH:mm')}`;
+    subCell.value = `Facility: ${options.pg_name || 'MyPGPMS PG'} | Status: ${(options.status || 'All').toUpperCase()}${periodInfo} | Generated: ${moment().format('DD/MM/YYYY HH:mm')}`;
     subCell.font = { name: 'Segoe UI', size: 10, italic: true, color: { argb: 'FF64748B' } };
     subCell.alignment = { vertical: 'middle' };
     worksheet.getRow(2).height = 20;
@@ -1149,7 +1149,7 @@ class StayService {
     const rowZebra = '#F8FAFC';
 
     const fmtCurr = (val) => Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const pgName = options.pg_name || 'HomeNest PG Facility';
+    const pgName = options.pg_name || 'MyPGPMS PG Facility';
 
     // 12 Columns in Logical Accounting & Departure Order (Total = 794 pt):
     const columns = [
@@ -1177,7 +1177,7 @@ class StayService {
         doc.fillColor('#FFFFFF').font(fontBold).fontSize(12).text('HN', startX, 21.5, { width: 28, align: 'center', lineBreak: false });
 
         doc.fillColor(textTitle).font(fontBold).fontSize(13).text(pgName, startX + 36, 14, { lineBreak: false });
-        doc.fillColor(textMuted).font(fontRegular).fontSize(7.5).text('Checkout and Refund Approvals Statement • HomeNest System', startX + 36, 29.5, { lineBreak: false });
+        doc.fillColor(textMuted).font(fontRegular).fontSize(7.5).text('Checkout and Refund Approvals Statement • MyPGPMS System', startX + 36, 29.5, { lineBreak: false });
 
         // 2. Right Meta Information Box
         const metaBoxW = 250;

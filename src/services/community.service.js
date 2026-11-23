@@ -188,7 +188,7 @@ class CommunityService {
         id: post.id,
         author: {
           id: post.user_id,
-          name: post.author_name || 'HomeNest Member',
+          name: post.author_name || 'MyPGPMS Member',
           room_no: post.author_room_no || null,
           role: post.author_role || 'resident',
           subtitle: `${roomSubtitle}${this.formatTimeAgo(post.created_at)}`,
@@ -264,7 +264,7 @@ class CommunityService {
       id: post.id,
       author: {
         id: post.user_id,
-        name: post.author_name || 'HomeNest Member',
+        name: post.author_name || 'MyPGPMS Member',
         room_no: post.author_room_no || null,
         role: post.author_role || 'resident',
         subtitle: `${roomSubtitle}${this.formatTimeAgo(post.created_at)}`,
@@ -531,7 +531,7 @@ class CommunityService {
       post_id: comment.post_id,
       author: {
         id: comment.user_id,
-        name: comment.author_name || 'HomeNest Member',
+        name: comment.author_name || 'MyPGPMS Member',
         room_no: comment.author_room_no || null,
         profile_photo_url: comment.author_photo ? buildFileUrl('users', comment.author_photo) : null,
       },
