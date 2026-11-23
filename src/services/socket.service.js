@@ -427,7 +427,7 @@ class SocketService {
     if (!this.io) return;
     try {
       if (pgId) {
-        this.io.to(`admins:pg:${pgId}`).to(`role:${ROLES.SUPER_ADMIN}`).emit(event, payload);
+        this.io.to(`admins:pg:${pgId}`).to(`role:${ROLES.ADMIN}`).to(`role:${ROLES.SUPER_ADMIN}`).emit(event, payload);
       } else {
         this.io.to(`role:${ROLES.ADMIN}`).to(`role:${ROLES.SUPER_ADMIN}`).emit(event, payload);
       }

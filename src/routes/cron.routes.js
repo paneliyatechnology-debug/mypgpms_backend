@@ -32,7 +32,7 @@ const runPublishTask = async () => {
 runPublishTask();
 
 // 2. Schedule recurring checks with node-cron every 30 seconds (at :00 and :30)
-cron.schedule('*/30 * * * * *', runPublishTask);
+cron.schedule('*/30 * * * * *', runPublishTask, { timezone: 'Asia/Kolkata' });
 
 // 3. Watchdog fallback interval (every 30 seconds) ensuring continuous background execution
 setInterval(runPublishTask, 30000);

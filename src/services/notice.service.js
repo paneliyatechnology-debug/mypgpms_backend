@@ -167,16 +167,21 @@ class NoticeService {
     try {
       const now = new Date();
       const nowEpoch = Math.floor(now.getTime() / 1000);
+      const nowIst = moment().utcOffset('+05:30').format('YYYY-MM-DD HH:mm:ss');
+      const nowUtc = moment().utc().format('YYYY-MM-DD HH:mm:ss');
 
-      // 1. Find all scheduled notices that are due for publication
+      // 1. Find all scheduled notices that are due for publication across UTC and IST
       const dueNotices = await db('notices')
         .whereRaw('LOWER(status) = ?', ['scheduled'])
         .whereNotNull('scheduled_at')
         .where((qb) => {
           qb.where('scheduled_at', '<=', now)
+            .orWhere('scheduled_at', '<=', nowIst)
+            .orWhere('scheduled_at', '<=', nowUtc)
             .orWhere('scheduled_at', '<=', db.fn.now())
-            .orWhereRaw('UNIX_TIMESTAMP(scheduled_at) <= UNIX_TIMESTAMP(NOW())')
-            .orWhereRaw('UNIX_TIMESTAMP(scheduled_at) <= ?', [nowEpoch]);
+            .orWhereRaw('CONVERT_TZ(scheduled_at, "+00:00", "+05:30") <= ?', [nowIst])
+            .orWhereRaw('UNIX_TIMESTAMP(scheduled_at) <= ?', [nowEpoch])
+            .orWhereRaw('UNIX_TIMESTAMP(scheduled_at) <= UNIX_TIMESTAMP(NOW())');
         })
         .whereNull('deleted_at')
         .select('*');
@@ -1028,14 +1033,18 @@ class NoticeService {
             .whereNull('deleted_at')
             .select('resident_id');
 
-          const rooms = [`pg:${pgId}`, ...pgStays.map((s) => `user:${s.resident_id}`)];
+          const rooms = [`pg:${pgId}`, `role:${ROLES.RESIDENT}`, ...pgStays.map((s) => `user:${s.resident_id}`)];
           socketService.emitToRooms(rooms, SOCKET_EVENTS.NOTICE_NEW, payload);
 
           for (const stay of pgStays) {
             socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
           }
+          if (pgStays.length === 0) {
+            socketService.emitToRole(ROLES.RESIDENT, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
+          }
         } else {
           socketService.emitToAll(SOCKET_EVENTS.NOTICE_NEW, payload);
+          socketService.emitToRole(ROLES.RESIDENT, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
         }
       }
 

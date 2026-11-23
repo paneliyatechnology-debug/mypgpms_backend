@@ -18,6 +18,11 @@ const knexConfig = {
     pool: {
       min: 2,
       max: 10,
+      afterCreate: (connection, done) => {
+        connection.query("SET time_zone = '+05:30';", (err) => {
+          done(err, connection);
+        });
+      },
     },
     migrations: {
       directory: './src/database/migrations',
@@ -40,6 +45,11 @@ const knexConfig = {
     pool: {
       min: 2,
       max: 10,
+      afterCreate: (connection, done) => {
+        connection.query("SET time_zone = '+05:30';", (err) => {
+          done(err, connection);
+        });
+      },
     },
     migrations: {
       directory: './src/database/migrations',
@@ -64,6 +74,11 @@ const knexConfig = {
     pool: {
       min: 2,
       max: 20,
+      afterCreate: (connection, done) => {
+        connection.query("SET time_zone = '+05:30';", (err) => {
+          done(err, connection);
+        });
+      },
     },
     migrations: {
       directory: './src/database/migrations',
