@@ -399,8 +399,8 @@ class PaymentService {
     const residentFilterName = options.resident_id && payments[0]?.resident?.name ? payments[0].resident.name : null;
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'MyPGPMS PG Management';
-    workbook.lastModifiedBy = 'MyPGPMS System';
+    workbook.creator = 'MYPGPMS PG Management';
+    workbook.lastModifiedBy = 'MYPGPMS System';
     workbook.created = moment().toDate();
     workbook.modified = moment().toDate();
 
@@ -443,7 +443,7 @@ class PaymentService {
     const subTitleCell = worksheet.getCell('A2');
     const subTitle = residentFilterName
       ? `Official Payments & Billing Ledger Statement • Resident: ${residentFilterName} (ID: ${options.resident_id})`
-      : 'Official Payments & Billing Ledger Statement • MyPGPMS PG Management System';
+      : 'Official Payments & Billing Ledger Statement • MYPGPMS PG Management System';
     subTitleCell.value = subTitle;
     subTitleCell.font = { name: 'Segoe UI', size: 10, bold: false, color: { argb: 'FF64748B' } };
     subTitleCell.alignment = { vertical: 'middle', horizontal: 'left' };
@@ -507,7 +507,7 @@ class PaymentService {
         : options.end_date
           ? `Until ${PaymentService.formatIST(options.end_date, false)}`
           : 'All Recorded Dates';
-    metaRowCell.value = `Statement Period: ${dateRangeStr}  •  Report Generated (IST): ${PaymentService.formatIST(moment(), true)}  •  Source: MyPGPMS Core`;
+    metaRowCell.value = `Statement Period: ${dateRangeStr}  •  Report Generated (IST): ${PaymentService.formatIST(moment(), true)}  •  Source: MYPGPMS Core`;
     metaRowCell.font = { name: 'Segoe UI', size: 8.5, italic: true, color: { argb: 'FF64748B' } };
     metaRowCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
@@ -808,7 +808,7 @@ class PaymentService {
         doc.fillColor(textTitle).font(fontBold).fontSize(13).text(branchName, startX + 36, 14, { lineBreak: false });
         const subTitle = residentFilterName
           ? `Payment Ledger Statement • Resident: ${residentFilterName} (ID: ${options.resident_id})`
-          : 'Payment & Billing Ledger Statement • MyPGPMS System';
+          : 'Payment & Billing Ledger Statement • MYPGPMS System';
         doc.fillColor(textMuted).font(fontRegular).fontSize(7.5).text(subTitle, startX + 36, 29.5, { lineBreak: false });
 
         // 2. Right Meta Information Box
@@ -1034,7 +1034,7 @@ class PaymentService {
       doc.moveTo(startX, 570).lineTo(startX + pageWidth, 570).strokeColor(borderSubtle).lineWidth(0.5).stroke();
 
       doc.fillColor(textMuted).font(fontRegular).fontSize(6.5).text(
-        `MyPGPMS PG Management System • Payment Ledger • ${branchName}`,
+        `MYPGPMS PG Management System • Payment Ledger • ${branchName}`,
         startX,
         574.5,
         { lineBreak: false }
@@ -1626,7 +1626,7 @@ class PaymentService {
       const footerY = 780;
       doc.moveTo(startX, footerY).lineTo(rightEdge, footerY).strokeColor(borderSubtle).lineWidth(0.5).stroke();
       doc.fillColor(textMuted).font(fontRegular).fontSize(7).text(
-        'MyPGPMS Property Management Platform',
+        'MYPGPMS Property Management Platform',
         startX,
         footerY + 6,
         { lineBreak: false }

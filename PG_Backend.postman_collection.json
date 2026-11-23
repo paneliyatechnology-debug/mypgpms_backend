@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "pg-backend-api-v1",
-    "name": "MyPGPMS API",
-    "description": "# MyPGPMS API\n\nProduction API collection for the **MyPGPMS** backend.\n\n## Quick Start\n1. Import this collection into Postman (**File → Import**).\n2. Run **02 Authentication → Login** (default credentials: `admin@example.com` / `Admin@123`).\n3. The test script automatically stores `accessToken`, `refreshToken`, `userId`, and `pgId` in collection variables.\n4. All protected requests automatically inherit `{{accessToken}}`.\n\n## Standards\n- **Base URL**: `{{baseUrl}}/api/v1`\n- **Dates**: `DD-MM-YYYY HH:mm`\n",
+    "name": "MYPGPMS API",
+    "description": "# MYPGPMS API\n\nProduction API collection for the **MYPGPMS** backend.\n\n## Quick Start\n1. Import this collection into Postman (**File → Import**).\n2. Run **02 Authentication → Login** (default credentials: `admin@example.com` / `Admin@123`).\n3. The test script automatically stores `accessToken`, `refreshToken`, `userId`, and `pgId` in collection variables.\n4. All protected requests automatically inherit `{{accessToken}}`.\n\n## Standards\n- **Base URL**: `{{baseUrl}}/api/v1`\n- **Dates**: `DD-MM-YYYY HH:mm`\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -1381,7 +1381,7 @@
     },
     {
       "name": "04 Building & Floor Management",
-      "description": "### 04 Building & Floor Management\nUnified management of buildings and their assigned floors in MyPGPMS.\n- Floors are assigned and managed directly via the `floors` array in the Building API.\n- No separate floor CRUD endpoints: creating, updating, adding, or removing floors is performed entirely through `POST /buildings` and `PUT /buildings/:id`.\n- `GET /buildings` and `GET /buildings/:id` return each building with its full nested `floors` array.",
+      "description": "### 04 Building & Floor Management\nUnified management of buildings and their assigned floors in MYPGPMS.\n- Floors are assigned and managed directly via the `floors` array in the Building API.\n- No separate floor CRUD endpoints: creating, updating, adding, or removing floors is performed entirely through `POST /buildings` and `PUT /buildings/:id`.\n- `GET /buildings` and `GET /buildings/:id` return each building with its full nested `floors` array.",
       "item": [
         {
           "name": "Building Stats",
@@ -7221,7 +7221,7 @@
               "formdata": [
                 {
                   "key": "content",
-                  "value": "Had an amazing time at the weekend movie night! Such a great vibe at MyPGPMS! 💚",
+                  "value": "Had an amazing time at the weekend movie night! Such a great vibe at MYPGPMS! 💚",
                   "type": "text",
                   "description": "Post text content (Required)"
                 },
@@ -7280,7 +7280,7 @@
               "formdata": [
                 {
                   "key": "content",
-                  "value": "Updated: Had an amazing time at the Yoga session! Such a great vibe at MyPGPMS! 💚",
+                  "value": "Updated: Had an amazing time at the Yoga session! Such a great vibe at MYPGPMS! 💚",
                   "type": "text"
                 },
                 {

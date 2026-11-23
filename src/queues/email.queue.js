@@ -17,7 +17,7 @@ const sendBrevoEmail = async (jobData) => {
 
   const payload = {
     sender: {
-      name: config.brevo.fromName || 'MyPGPMS',
+      name: config.brevo.fromName || 'MYPGPMS',
       email: config.brevo.senderEmail || 'jasminkorat04@gmail.com',
     },
     to: [

@@ -1,12 +1,12 @@
-# MyPGPMS Real-Time WebSocket & Socket.IO Documentation
+# MYPGPMS Real-Time WebSocket & Socket.IO Documentation
 
-Comprehensive reference documentation for the real-time WebSocket architecture, connection lifecycle, room subscriptions, and event catalog for the MyPGPMS PG & Hostel Management Platform.
+Comprehensive reference documentation for the real-time WebSocket architecture, connection lifecycle, room subscriptions, and event catalog for the MYPGPMS PG & Hostel Management Platform.
 
 ---
 
 ## 1. Architecture Overview
 
-MyPGPMS implements a bidirectional, real-time messaging pipeline built on **Socket.IO (v4+)**. Real-time capabilities power instant notifications, maintenance issue dispatching, visitor arrival alerts, live community feeds, room shifting workflows, and checkout tracking.
+MYPGPMS implements a bidirectional, real-time messaging pipeline built on **Socket.IO (v4+)**. Real-time capabilities power instant notifications, maintenance issue dispatching, visitor arrival alerts, live community feeds, room shifting workflows, and checkout tracking.
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -33,7 +33,7 @@ MyPGPMS implements a bidirectional, real-time messaging pipeline built on **Sock
 - **Ping Interval**: 25,000 ms (25s)
 - **Ping Timeout**: 30,000 ms (30s)
 - **CORS Support**: Synchronized with backend environment `CORS_ORIGIN` credentials allowed.
-- **Server Initialization**: Mounted to HTTP server in [`src/server.js`](file:///d:/MyPGPMS_Backend/src/server.js#L17) via `socketService.init(server)`.
+- **Server Initialization**: Mounted to HTTP server in [`src/server.js`](file:///d:/MYPGPMS_Backend/src/server.js#L17) via `socketService.init(server)`.
 
 ---
 
@@ -162,7 +162,7 @@ Below is the complete inventory of all real-time events dispatched by the backen
 Dispatched when a new complaint is filed or when a complaint is assigned to a staff member.
 
 - **Trigger A (New Complaint)**:
-  - **Location**: [`src/services/complaint.service.js:297`](file:///d:/MyPGPMS_Backend/src/services/complaint.service.js#L297) (`createComplaint`)
+  - **Location**: [`src/services/complaint.service.js:297`](file:///d:/MYPGPMS_Backend/src/services/complaint.service.js#L297) (`createComplaint`)
   - **Audience**: Property Admins & Super Admins (`emitToPgAdmins`)
   - **Payload**:
     ```json
@@ -178,7 +178,7 @@ Dispatched when a new complaint is filed or when a complaint is assigned to a st
     ```
 
 - **Trigger B (Assigned to Staff)**:
-  - **Location**: [`src/services/complaint.service.js:760`](file:///d:/MyPGPMS_Backend/src/services/complaint.service.js#L760) (`assignComplaint`)
+  - **Location**: [`src/services/complaint.service.js:760`](file:///d:/MYPGPMS_Backend/src/services/complaint.service.js#L760) (`assignComplaint`)
   - **Audience**: Assigned Staff Member (`emitToUser`)
   - **Payload**:
     ```json
@@ -193,7 +193,7 @@ Dispatched when a new complaint is filed or when a complaint is assigned to a st
 #### 2. `complaint:status_updated`
 Dispatched whenever the status of a complaint changes (e.g. `PENDING` $\rightarrow$ `IN_PROGRESS` $\rightarrow$ `RESOLVED` / `REJECTED`).
 
-- **Location**: [`src/services/complaint.service.js:846-854`](file:///d:/MyPGPMS_Backend/src/services/complaint.service.js#L846-L854) (`updateComplaintStatus`)
+- **Location**: [`src/services/complaint.service.js:846-854`](file:///d:/MYPGPMS_Backend/src/services/complaint.service.js#L846-L854) (`updateComplaintStatus`)
 - **Audience**:
   - The resident who filed the complaint (`emitToUser`)
   - Property Admins (`emitToPgAdmins`)
@@ -212,7 +212,7 @@ Dispatched whenever the status of a complaint changes (e.g. `PENDING` $\rightarr
 #### 3. `complaint:activity`
 Dispatched when administrative actions are taken on a complaint, such as assigning staff or scheduling a due date.
 
-- **Location**: [`src/services/complaint.service.js:753`](file:///d:/MyPGPMS_Backend/src/services/complaint.service.js#L753) (`assignComplaint`)
+- **Location**: [`src/services/complaint.service.js:753`](file:///d:/MYPGPMS_Backend/src/services/complaint.service.js#L753) (`assignComplaint`)
 - **Audience**: Resident who filed the complaint (`emitToUser`)
 - **Payload**:
   ```json
@@ -232,7 +232,7 @@ Dispatched when administrative actions are taken on a complaint, such as assigni
 #### 4. `notice:new`
 Dispatched when a notice or announcement is published immediately upon creation or when a draft/scheduled notice is sent.
 
-- **Location**: [`src/services/notice.service.js:760-764`](file:///d:/MyPGPMS_Backend/src/services/notice.service.js#L760-L764) (`emitNoticeRealTime` via `createNotice` / `sendNotice`)
+- **Location**: [`src/services/notice.service.js:760-764`](file:///d:/MYPGPMS_Backend/src/services/notice.service.js#L760-L764) (`emitNoticeRealTime` via `createNotice` / `sendNotice`)
 - **Audience**:
   - If `audience_type === 'resident'`: Specific resident (`emitToUser`)
   - If `audience_type === 'branch'`: Specific branch members (`emitToBranch`)
@@ -257,7 +257,7 @@ Dispatched when a notice or announcement is published immediately upon creation 
 #### 5. `community:post_new`
 Dispatched when any resident or admin publishes a new community post.
 
-- **Location**: [`src/services/community.service.js:313`](file:///d:/MyPGPMS_Backend/src/services/community.service.js#L313) (`createPost`)
+- **Location**: [`src/services/community.service.js:313`](file:///d:/MYPGPMS_Backend/src/services/community.service.js#L313) (`createPost`)
 - **Audience**: All residents and staff in the PG property (`emitToPg`)
 - **Payload**:
   ```json
@@ -286,7 +286,7 @@ Dispatched when any resident or admin publishes a new community post.
 #### 6. `community:post_liked`
 Dispatched when a post is liked or unliked.
 
-- **Location**: [`src/services/community.service.js:455-461`](file:///d:/MyPGPMS_Backend/src/services/community.service.js#L455-L461) (`toggleLikePost`)
+- **Location**: [`src/services/community.service.js:455-461`](file:///d:/MYPGPMS_Backend/src/services/community.service.js#L455-L461) (`toggleLikePost`)
 - **Audience**:
   - Entire PG feed (`emitToPg`)
   - Users viewing the post thread (`emitToPost`)
@@ -303,7 +303,7 @@ Dispatched when a post is liked or unliked.
 #### 7. `community:comment_new`
 Dispatched when a new comment is posted on a community post.
 
-- **Location**: [`src/services/community.service.js:584-630`](file:///d:/MyPGPMS_Backend/src/services/community.service.js#L584-L630) (`createComment`)
+- **Location**: [`src/services/community.service.js:584-630`](file:///d:/MYPGPMS_Backend/src/services/community.service.js#L584-L630) (`createComment`)
 - **Audience**:
   - Entire PG feed (`emitToPg`)
   - Users viewing the post thread (`emitToPost`)
@@ -327,8 +327,8 @@ Dispatched when a new comment is posted on a community post.
 Dispatched directly to a user when another resident interacts with their content.
 
 - **Triggers**:
-  - Post liked by another user: [`src/services/community.service.js:469`](file:///d:/MyPGPMS_Backend/src/services/community.service.js#L469)
-  - Post commented on by another user: [`src/services/community.service.js:610`](file:///d:/MyPGPMS_Backend/src/services/community.service.js#L610)
+  - Post liked by another user: [`src/services/community.service.js:469`](file:///d:/MYPGPMS_Backend/src/services/community.service.js#L469)
+  - Post commented on by another user: [`src/services/community.service.js:610`](file:///d:/MYPGPMS_Backend/src/services/community.service.js#L610)
 - **Audience**: Post Author (`emitToUser`)
 - **Payload (Like)**:
   ```json
@@ -354,7 +354,7 @@ Dispatched directly to a user when another resident interacts with their content
 #### 9. `visitor:status_updated`
 Dispatched when a visitor pass is approved, rejected, or updated by Property Management or Security.
 
-- **Location**: [`src/services/visitor.service.js:768-775`](file:///d:/MyPGPMS_Backend/src/services/visitor.service.js#L768-L775) (`updatePassStatus`)
+- **Location**: [`src/services/visitor.service.js:768-775`](file:///d:/MYPGPMS_Backend/src/services/visitor.service.js#L768-L775) (`updatePassStatus`)
 - **Audience**:
   - Resident hosting the visitor (`emitToUser`)
   - Property Admins (`emitToPgAdmins`)
@@ -372,7 +372,7 @@ Dispatched when a visitor pass is approved, rejected, or updated by Property Man
 #### 10. `visitor:entry`
 Dispatched when security records a visitor entering or exiting the property gate.
 
-- **Location**: [`src/services/visitor.service.js:908-969`](file:///d:/MyPGPMS_Backend/src/services/visitor.service.js#L908-L969) (`recordGateLog`)
+- **Location**: [`src/services/visitor.service.js:908-969`](file:///d:/MYPGPMS_Backend/src/services/visitor.service.js#L908-L969) (`recordGateLog`)
 - **Audience**: Resident hosting the visitor (`emitToUser`)
 - **Payload (Gate Entry / Check-in)**:
   ```json
@@ -404,7 +404,7 @@ Dispatched when security records a visitor entering or exiting the property gate
 #### 11. `room_shift:new`
 Dispatched when a resident files a request to shift to another room or bed.
 
-- **Location**: [`src/services/room.service.js:882-893`](file:///d:/MyPGPMS_Backend/src/services/room.service.js#L882-L893) (`createRoomShiftRequest`)
+- **Location**: [`src/services/room.service.js:882-893`](file:///d:/MYPGPMS_Backend/src/services/room.service.js#L882-L893) (`createRoomShiftRequest`)
 - **Audience**:
   - Property Admins (`emitToPgAdmins`)
   - Target Resident (if created on resident's behalf by Admin) (`emitToUser`)
@@ -423,7 +423,7 @@ Dispatched when a resident files a request to shift to another room or bed.
 #### 12. `room_shift:status_updated`
 Dispatched when Admin approves, rejects, or changes the status of a room shift request.
 
-- **Location**: [`src/services/room.service.js:1198`](file:///d:/MyPGPMS_Backend/src/services/room.service.js#L1198) (`reviewShiftRequest`)
+- **Location**: [`src/services/room.service.js:1198`](file:///d:/MYPGPMS_Backend/src/services/room.service.js#L1198) (`reviewShiftRequest`)
 - **Audience**: Resident who filed the shift request (`emitToUser`)
 - **Payload**:
   ```json
@@ -442,7 +442,7 @@ Dispatched when Admin approves, rejects, or changes the status of a room shift r
 #### 13. `checkout:new`
 Dispatched when a resident submits a request to vacate/checkout of their stay.
 
-- **Location**: [`src/services/stay.service.js:599`](file:///d:/MyPGPMS_Backend/src/services/stay.service.js#L599) (`createCheckoutRequest`)
+- **Location**: [`src/services/stay.service.js:599`](file:///d:/MYPGPMS_Backend/src/services/stay.service.js#L599) (`createCheckoutRequest`)
 - **Audience**: Property Admins & Super Admins (`emitToPgAdmins`)
 - **Payload**:
   ```json
@@ -459,7 +459,7 @@ Dispatched when a resident submits a request to vacate/checkout of their stay.
 #### 14. `checkout:status_updated`
 Dispatched when Admin reviews and updates the status of a checkout request (e.g. `approved`, `rejected`).
 
-- **Location**: [`src/services/stay.service.js:1764`](file:///d:/MyPGPMS_Backend/src/services/stay.service.js#L1764) (`reviewCheckoutRequest`)
+- **Location**: [`src/services/stay.service.js:1764`](file:///d:/MYPGPMS_Backend/src/services/stay.service.js#L1764) (`reviewCheckoutRequest`)
 - **Audience**: Resident who submitted the checkout request (`emitToUser`)
 - **Payload**:
   ```json
@@ -475,7 +475,7 @@ Dispatched when Admin reviews and updates the status of a checkout request (e.g.
 
 ### 5.7 Architectural Constants & Reserved Events
 
-Defined in [`src/services/socket.service.js:10-41`](file:///d:/MyPGPMS_Backend/src/services/socket.service.js#L10-L41) for extended real-time capabilities:
+Defined in [`src/services/socket.service.js:10-41`](file:///d:/MYPGPMS_Backend/src/services/socket.service.js#L10-L41) for extended real-time capabilities:
 
 | Constant Name | Event String | Purpose / Recommended Usage |
 | :--- | :--- | :--- |
@@ -490,43 +490,43 @@ Defined in [`src/services/socket.service.js:10-41`](file:///d:/MyPGPMS_Backend/s
 | # | Event Name | Direction | Target Room / Recipient | Trigger Action | Emitting Service & Line |
 | :---: | :--- | :---: | :--- | :--- | :--- |
 | **1** | `dashboard:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Any key metric change (rooms, residents, payments, complaints) | Centralized across all core mutation services |
-| **2** | `room:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Room created, updated, deleted, or resident shift/occupancy updated | [`room.service.js`](file:///d:/MyPGPMS_Backend/src/services/room.service.js), [`stay.service.js`](file:///d:/MyPGPMS_Backend/src/services/stay.service.js) |
-| **3** | `room:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | New room added to inventory | [`room.service.js`](file:///d:/MyPGPMS_Backend/src/services/room.service.js) |
-| **4** | `room:updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Room status or capacity updated | [`room.service.js`](file:///d:/MyPGPMS_Backend/src/services/room.service.js) |
-| **5** | `room:deleted` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Room removed from inventory | [`room.service.js`](file:///d:/MyPGPMS_Backend/src/services/room.service.js) |
-| **6** | `room_shift:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | Resident submits room shift request | [`room.service.js:882, 893`](file:///d:/MyPGPMS_Backend/src/services/room.service.js#L882) |
-| **7** | `room_shift:status_updated` | S $\rightarrow$ C | `user:<residentId>` | Admin approves or rejects room shift | [`room.service.js:1198`](file:///d:/MyPGPMS_Backend/src/services/room.service.js#L1198) |
-| **8** | `payment:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Payment recorded, paid, updated, or deleted | [`payment.service.js`](file:///d:/MyPGPMS_Backend/src/services/payment.service.js) |
-| **9** | `payment:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | New payment invoice / demand generated | [`payment.service.js`](file:///d:/MyPGPMS_Backend/src/services/payment.service.js) |
-| **10** | `payment:status_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | Payment paid, verified, or updated | [`payment.service.js`](file:///d:/MyPGPMS_Backend/src/services/payment.service.js) |
-| **11** | `resident:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Resident registered, updated, checked out, or deleted | [`user.service.js`](file:///d:/MyPGPMS_Backend/src/services/user.service.js), [`stay.service.js`](file:///d:/MyPGPMS_Backend/src/services/stay.service.js) |
-| **12** | `user:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | New user / resident created | [`user.service.js`](file:///d:/MyPGPMS_Backend/src/services/user.service.js) |
-| **13** | `user:updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | User profile or status updated | [`user.service.js`](file:///d:/MyPGPMS_Backend/src/services/user.service.js) |
-| **14** | `staff:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Staff added, role changed, status updated, or deleted | [`user.service.js`](file:///d:/MyPGPMS_Backend/src/services/user.service.js) |
-| **15** | `branch:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Branch created, updated, or deleted | [`branch.service.js`](file:///d:/MyPGPMS_Backend/src/services/branch.service.js) |
-| **16** | `building:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Building or floor created, updated, or removed | [`building.service.js`](file:///d:/MyPGPMS_Backend/src/services/building.service.js) |
-| **17** | `complaint:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Complaint created, status updated, or resolved | [`complaint.service.js`](file:///d:/MyPGPMS_Backend/src/services/complaint.service.js) |
-| **18** | `complaint:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<staffId>` | Resident creates complaint or Admin assigns to staff | [`complaint.service.js:297, 760`](file:///d:/MyPGPMS_Backend/src/services/complaint.service.js#L297) |
-| **19** | `complaint:status_updated` | S $\rightarrow$ C | `user:<residentId>` & `pg:<pgId>` (Admins) | Admin/Staff updates complaint status | [`complaint.service.js:846, 854`](file:///d:/MyPGPMS_Backend/src/services/complaint.service.js#L846) |
-| **20** | `complaint:activity` | S $\rightarrow$ C | `user:<residentId>` | Admin assigns staff or updates due date | [`complaint.service.js:753`](file:///d:/MyPGPMS_Backend/src/services/complaint.service.js#L753) |
-| **21** | `visitor:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Visitor pass created, status updated, or gate entry/exit logged | [`visitor.service.js`](file:///d:/MyPGPMS_Backend/src/services/visitor.service.js) |
-| **22** | `visitor:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | New visitor pass generated | [`visitor.service.js`](file:///d:/MyPGPMS_Backend/src/services/visitor.service.js) |
-| **23** | `visitor:status_updated` | S $\rightarrow$ C | `user:<residentId>` & `pg:<pgId>` (Admins) | Visitor pass approved, rejected, or changed | [`visitor.service.js:768, 775`](file:///d:/MyPGPMS_Backend/src/services/visitor.service.js#L768) |
-| **24** | `visitor:entry` | S $\rightarrow$ C | `user:<residentId>` | Security logs visitor Entry or Exit at gate | [`visitor.service.js:908, 969`](file:///d:/MyPGPMS_Backend/src/services/visitor.service.js#L908) |
-| **25** | `notice:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Notice created, scheduled, broadcasted, or deleted | [`notice.service.js`](file:///d:/MyPGPMS_Backend/src/services/notice.service.js) |
-| **26** | `notice:new` | S $\rightarrow$ C | `pg:<pgId>` / `branch:<branchId>` / `user:<residentId>` | Admin publishes or sends a notice | [`notice.service.js:760-764`](file:///d:/MyPGPMS_Backend/src/services/notice.service.js#L760) |
-| **27** | `laundry:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Laundry order created, status changed, or cancelled | [`laundry.service.js`](file:///d:/MyPGPMS_Backend/src/services/laundry.service.js) |
-| **28** | `laundry:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | New laundry pickup request placed | [`laundry.service.js`](file:///d:/MyPGPMS_Backend/src/services/laundry.service.js) |
-| **29** | `laundry:status_updated` | S $\rightarrow$ C | `user:<residentId>` & `pg:<pgId>` (Admins) | Laundry order marked in-progress or completed | [`laundry.service.js`](file:///d:/MyPGPMS_Backend/src/services/laundry.service.js) |
-| **30** | `subscription:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Subscription plan created, updated, or removed | [`subscription.service.js`](file:///d:/MyPGPMS_Backend/src/services/subscription.service.js) |
-| **31** | `community:post_new` | S $\rightarrow$ C | `pg:<pgId>` | Resident or Admin creates community post | [`community.service.js:313`](file:///d:/MyPGPMS_Backend/src/services/community.service.js#L313) |
-| **32** | `community:post_liked` | S $\rightarrow$ C | `pg:<pgId>` & `post:<postId>` | User toggles like on post | [`community.service.js:455, 461`](file:///d:/MyPGPMS_Backend/src/services/community.service.js#L455) |
-| **33** | `community:comment_new` | S $\rightarrow$ C | `pg:<pgId>` & `post:<postId>` | User comments on post | [`community.service.js:584, 596`](file:///d:/MyPGPMS_Backend/src/services/community.service.js#L584) |
-| **34** | `notification:new` | S $\rightarrow$ C | `user:<postAuthorId>` | Post author notified of likes or comments | [`community.service.js:469, 610`](file:///d:/MyPGPMS_Backend/src/services/community.service.js#L469) |
-| **35** | `checkout:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Resident submits checkout/vacate request | [`stay.service.js:599`](file:///d:/MyPGPMS_Backend/src/services/stay.service.js#L599) |
-| **36** | `checkout:status_updated` | S $\rightarrow$ C | `user:<residentId>` | Admin approves or updates checkout request | [`stay.service.js:1764`](file:///d:/MyPGPMS_Backend/src/services/stay.service.js#L1764) |
-| **37** | `subscribe:post` | C $\rightarrow$ S | `post:<postId>` | Client enters community post thread | [`socket.service.js:168`](file:///d:/MyPGPMS_Backend/src/services/socket.service.js#L168) |
-| **38** | `unsubscribe:post` | C $\rightarrow$ S | `post:<postId>` | Client leaves community post thread | [`socket.service.js:174`](file:///d:/MyPGPMS_Backend/src/services/socket.service.js#L174) |
+| **2** | `room:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Room created, updated, deleted, or resident shift/occupancy updated | [`room.service.js`](file:///d:/MYPGPMS_Backend/src/services/room.service.js), [`stay.service.js`](file:///d:/MYPGPMS_Backend/src/services/stay.service.js) |
+| **3** | `room:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | New room added to inventory | [`room.service.js`](file:///d:/MYPGPMS_Backend/src/services/room.service.js) |
+| **4** | `room:updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Room status or capacity updated | [`room.service.js`](file:///d:/MYPGPMS_Backend/src/services/room.service.js) |
+| **5** | `room:deleted` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Room removed from inventory | [`room.service.js`](file:///d:/MYPGPMS_Backend/src/services/room.service.js) |
+| **6** | `room_shift:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | Resident submits room shift request | [`room.service.js:882, 893`](file:///d:/MYPGPMS_Backend/src/services/room.service.js#L882) |
+| **7** | `room_shift:status_updated` | S $\rightarrow$ C | `user:<residentId>` | Admin approves or rejects room shift | [`room.service.js:1198`](file:///d:/MYPGPMS_Backend/src/services/room.service.js#L1198) |
+| **8** | `payment:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Payment recorded, paid, updated, or deleted | [`payment.service.js`](file:///d:/MYPGPMS_Backend/src/services/payment.service.js) |
+| **9** | `payment:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | New payment invoice / demand generated | [`payment.service.js`](file:///d:/MYPGPMS_Backend/src/services/payment.service.js) |
+| **10** | `payment:status_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | Payment paid, verified, or updated | [`payment.service.js`](file:///d:/MYPGPMS_Backend/src/services/payment.service.js) |
+| **11** | `resident:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Resident registered, updated, checked out, or deleted | [`user.service.js`](file:///d:/MYPGPMS_Backend/src/services/user.service.js), [`stay.service.js`](file:///d:/MYPGPMS_Backend/src/services/stay.service.js) |
+| **12** | `user:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | New user / resident created | [`user.service.js`](file:///d:/MYPGPMS_Backend/src/services/user.service.js) |
+| **13** | `user:updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | User profile or status updated | [`user.service.js`](file:///d:/MYPGPMS_Backend/src/services/user.service.js) |
+| **14** | `staff:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Staff added, role changed, status updated, or deleted | [`user.service.js`](file:///d:/MYPGPMS_Backend/src/services/user.service.js) |
+| **15** | `branch:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Branch created, updated, or deleted | [`branch.service.js`](file:///d:/MYPGPMS_Backend/src/services/branch.service.js) |
+| **16** | `building:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Building or floor created, updated, or removed | [`building.service.js`](file:///d:/MYPGPMS_Backend/src/services/building.service.js) |
+| **17** | `complaint:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Complaint created, status updated, or resolved | [`complaint.service.js`](file:///d:/MYPGPMS_Backend/src/services/complaint.service.js) |
+| **18** | `complaint:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<staffId>` | Resident creates complaint or Admin assigns to staff | [`complaint.service.js:297, 760`](file:///d:/MYPGPMS_Backend/src/services/complaint.service.js#L297) |
+| **19** | `complaint:status_updated` | S $\rightarrow$ C | `user:<residentId>` & `pg:<pgId>` (Admins) | Admin/Staff updates complaint status | [`complaint.service.js:846, 854`](file:///d:/MYPGPMS_Backend/src/services/complaint.service.js#L846) |
+| **20** | `complaint:activity` | S $\rightarrow$ C | `user:<residentId>` | Admin assigns staff or updates due date | [`complaint.service.js:753`](file:///d:/MYPGPMS_Backend/src/services/complaint.service.js#L753) |
+| **21** | `visitor:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Visitor pass created, status updated, or gate entry/exit logged | [`visitor.service.js`](file:///d:/MYPGPMS_Backend/src/services/visitor.service.js) |
+| **22** | `visitor:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | New visitor pass generated | [`visitor.service.js`](file:///d:/MYPGPMS_Backend/src/services/visitor.service.js) |
+| **23** | `visitor:status_updated` | S $\rightarrow$ C | `user:<residentId>` & `pg:<pgId>` (Admins) | Visitor pass approved, rejected, or changed | [`visitor.service.js:768, 775`](file:///d:/MYPGPMS_Backend/src/services/visitor.service.js#L768) |
+| **24** | `visitor:entry` | S $\rightarrow$ C | `user:<residentId>` | Security logs visitor Entry or Exit at gate | [`visitor.service.js:908, 969`](file:///d:/MYPGPMS_Backend/src/services/visitor.service.js#L908) |
+| **25** | `notice:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Notice created, scheduled, broadcasted, or deleted | [`notice.service.js`](file:///d:/MYPGPMS_Backend/src/services/notice.service.js) |
+| **26** | `notice:new` | S $\rightarrow$ C | `pg:<pgId>` / `branch:<branchId>` / `user:<residentId>` | Admin publishes or sends a notice | [`notice.service.js:760-764`](file:///d:/MYPGPMS_Backend/src/services/notice.service.js#L760) |
+| **27** | `laundry:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Laundry order created, status changed, or cancelled | [`laundry.service.js`](file:///d:/MYPGPMS_Backend/src/services/laundry.service.js) |
+| **28** | `laundry:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) / `user:<residentId>` | New laundry pickup request placed | [`laundry.service.js`](file:///d:/MYPGPMS_Backend/src/services/laundry.service.js) |
+| **29** | `laundry:status_updated` | S $\rightarrow$ C | `user:<residentId>` & `pg:<pgId>` (Admins) | Laundry order marked in-progress or completed | [`laundry.service.js`](file:///d:/MYPGPMS_Backend/src/services/laundry.service.js) |
+| **30** | `subscription:stats_updated` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Subscription plan created, updated, or removed | [`subscription.service.js`](file:///d:/MYPGPMS_Backend/src/services/subscription.service.js) |
+| **31** | `community:post_new` | S $\rightarrow$ C | `pg:<pgId>` | Resident or Admin creates community post | [`community.service.js:313`](file:///d:/MYPGPMS_Backend/src/services/community.service.js#L313) |
+| **32** | `community:post_liked` | S $\rightarrow$ C | `pg:<pgId>` & `post:<postId>` | User toggles like on post | [`community.service.js:455, 461`](file:///d:/MYPGPMS_Backend/src/services/community.service.js#L455) |
+| **33** | `community:comment_new` | S $\rightarrow$ C | `pg:<pgId>` & `post:<postId>` | User comments on post | [`community.service.js:584, 596`](file:///d:/MYPGPMS_Backend/src/services/community.service.js#L584) |
+| **34** | `notification:new` | S $\rightarrow$ C | `user:<postAuthorId>` | Post author notified of likes or comments | [`community.service.js:469, 610`](file:///d:/MYPGPMS_Backend/src/services/community.service.js#L469) |
+| **35** | `checkout:new` | S $\rightarrow$ C | `pg:<pgId>` (Admins) | Resident submits checkout/vacate request | [`stay.service.js:599`](file:///d:/MYPGPMS_Backend/src/services/stay.service.js#L599) |
+| **36** | `checkout:status_updated` | S $\rightarrow$ C | `user:<residentId>` | Admin approves or updates checkout request | [`stay.service.js:1764`](file:///d:/MYPGPMS_Backend/src/services/stay.service.js#L1764) |
+| **37** | `subscribe:post` | C $\rightarrow$ S | `post:<postId>` | Client enters community post thread | [`socket.service.js:168`](file:///d:/MYPGPMS_Backend/src/services/socket.service.js#L168) |
+| **38** | `unsubscribe:post` | C $\rightarrow$ S | `post:<postId>` | Client leaves community post thread | [`socket.service.js:174`](file:///d:/MYPGPMS_Backend/src/services/socket.service.js#L174) |
 
 ---
 
