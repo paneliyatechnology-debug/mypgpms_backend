@@ -198,8 +198,8 @@ class SocketService {
         let token = null;
 
         // 1. From handshake auth object
-        if (socket.handshake.auth && socket.handshake.auth.token) {
-          token = socket.handshake.auth.token;
+        if (socket.handshake.auth) {
+          token = socket.handshake.auth.token || socket.handshake.auth.accessToken || socket.handshake.auth.access_token || null;
         }
 
         // 2. From Authorization header
@@ -212,12 +212,31 @@ class SocketService {
           }
         }
 
-        if (!token || token === 'undefined' || token === 'null') {
-          return next(new Error('Authentication error: Access token missing'));
+        // 3. From URL query params (e.g. ?token=... or Postman Params tab)
+        if (!token && socket.handshake.query) {
+          token = socket.handshake.query.token || socket.handshake.query.access_token || socket.handshake.query.accessToken || null;
+        }
+
+        // 4. From Cookie header (e.g. access_token=...)
+        if (!token && socket.handshake.headers && socket.handshake.headers.cookie) {
+          const match = socket.handshake.headers.cookie.match(/(?:^|;\s*)access_token=([^;]+)/);
+          if (match) {
+            token = decodeURIComponent(match[1]);
+          }
         }
 
         // Clean quotes or template artifacts if passed by clients
-        token = token.replace(/^"(.*)"$/, '$1');
+        if (token) {
+          token = String(token).trim().replace(/^"(.*)"$/, '$1');
+        }
+
+        if (!token || token === 'undefined' || token === 'null' || token.startsWith('{{')) {
+          return next(
+            new Error(
+              'Authentication error: Access token missing. Please provide a valid Bearer token in the "Headers" tab (Key: Authorization, Value: Bearer <token>) or "Params" tab (Key: token).'
+            )
+          );
+        }
 
         const decoded = verifyAccessToken(token);
         if (!decoded || !decoded.id) {
@@ -348,9 +367,13 @@ class SocketService {
    * @param {Object} payload
    */
   emitToPg = (pgId, event, payload) => {
-    if (!this.io || !pgId) return;
+    if (!this.io) return;
     try {
-      this.io.to(`pg:${pgId}`).emit(event, payload);
+      if (pgId) {
+        this.io.to(`pg:${pgId}`).emit(event, payload);
+      } else {
+        this.io.emit(event, payload);
+      }
     } catch (err) {
       console.warn(`[Socket Warning] emitToPg failed:`, err.message);
     }
@@ -457,6 +480,8 @@ class SocketService {
       this.emitToPgAdmins(pgId, event, data);
       if (pgId) {
         this.emitToPg(pgId, event, data);
+      } else {
+        this.emitToAll(event, data);
       }
     } catch (err) {
       console.warn(`[Socket Warning] emitStatsUpdated failed:`, err.message);

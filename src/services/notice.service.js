@@ -629,6 +629,16 @@ class NoticeService {
       });
     }
 
+    try {
+      socketService.emitStatsUpdated(context.pg_id, SOCKET_EVENTS.NOTICE_STATS_UPDATED, {
+        notice_id: id,
+        status,
+        action: 'created',
+      });
+    } catch (statsErr) {
+      console.warn(`[NoticeService] Stats emit failed on create:`, statsErr.message);
+    }
+
     auditService.log({
       pg_id: context.pg_id,
       branch_id: targetBranchId || context.branch_id || null,
