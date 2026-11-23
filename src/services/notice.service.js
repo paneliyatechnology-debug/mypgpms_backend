@@ -590,7 +590,7 @@ class NoticeService {
     }
 
     // Resolve scheduled datetime in India Standard Time (+05:30)
-    const scheduledAt = this.parseScheduledAt(data.scheduled_at, data.schedule_date, data.schedule_time);
+    let scheduledAt = this.parseScheduledAt(data.scheduled_at, data.schedule_date, data.schedule_time);
 
     // Resolve status: default status is 'draft' unless scheduled or sent
     const requestedStatus = (data.status || '').toLowerCase().trim();
@@ -998,13 +998,12 @@ class NoticeService {
           .whereNull('deleted_at')
           .select('resident_id');
 
-        for (const stay of roomStays) {
-          socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTICE_NEW, payload);
-          socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
-        }
+        const rooms = roomStays.map((s) => `user:${s.resident_id}`);
+        if (targetBranchId) rooms.push(`branch:${targetBranchId}`);
+        socketService.emitToRooms(rooms, SOCKET_EVENTS.NOTICE_NEW, payload);
 
-        if (targetBranchId) {
-          socketService.emitToBranch(targetBranchId, SOCKET_EVENTS.NOTICE_NEW, payload);
+        for (const stay of roomStays) {
+          socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
         }
       }
       // 3. Audience: Specific Branch
@@ -1014,12 +1013,12 @@ class NoticeService {
           .whereNull('deleted_at')
           .select('resident_id');
 
+        const rooms = [`branch:${targetBranchId}`, ...branchStays.map((s) => `user:${s.resident_id}`)];
+        socketService.emitToRooms(rooms, SOCKET_EVENTS.NOTICE_NEW, payload);
+
         for (const stay of branchStays) {
-          socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTICE_NEW, payload);
           socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
         }
-
-        socketService.emitToBranch(targetBranchId, SOCKET_EVENTS.NOTICE_NEW, payload);
       }
       // 4. Audience: All Residents under Property
       else {
@@ -1029,18 +1028,18 @@ class NoticeService {
             .whereNull('deleted_at')
             .select('resident_id');
 
+          const rooms = [`pg:${pgId}`, ...pgStays.map((s) => `user:${s.resident_id}`)];
+          socketService.emitToRooms(rooms, SOCKET_EVENTS.NOTICE_NEW, payload);
+
           for (const stay of pgStays) {
-            socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTICE_NEW, payload);
             socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
           }
-
-          socketService.emitToPg(pgId, SOCKET_EVENTS.NOTICE_NEW, payload);
         } else {
           socketService.emitToAll(SOCKET_EVENTS.NOTICE_NEW, payload);
         }
       }
 
-      // 5. Always notify PG Admins and update admin statistics
+      // 5. Always notify PG Admins
       if (pgId) {
         socketService.emitToPgAdmins(pgId, SOCKET_EVENTS.NOTICE_NEW, payload);
       }

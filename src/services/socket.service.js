@@ -309,6 +309,11 @@ class SocketService {
         socket.join(`branch:${user.branch_id}`);
       }
 
+      // Automatically join property admin room for staff & managers
+      if (user.pg_id && (user.role === ROLES.ADMIN || user.role === ROLES.STAFF || user.role === ROLES.BRANCH_MANAGER)) {
+        socket.join(`admins:pg:${user.pg_id}`);
+      }
+
       if (config.env === 'development') {
         console.log(`[Socket] Connected: user=${user.email} (id=${user.id}, role=${user.role}) socket_id=${socket.id}`);
       }
@@ -422,12 +427,35 @@ class SocketService {
     if (!this.io) return;
     try {
       if (pgId) {
-        this.io.to(`pg:${pgId}`).to(`role:${ROLES.ADMIN}`).to(`role:${ROLES.SUPER_ADMIN}`).emit(event, payload);
+        this.io.to(`admins:pg:${pgId}`).to(`role:${ROLES.SUPER_ADMIN}`).emit(event, payload);
       } else {
         this.io.to(`role:${ROLES.ADMIN}`).to(`role:${ROLES.SUPER_ADMIN}`).emit(event, payload);
       }
     } catch (err) {
       console.warn(`[Socket Warning] emitToPgAdmins failed:`, err.message);
+    }
+  };
+
+  /**
+   * Emit event across multiple rooms in a single broadcast with automatic socket deduplication
+   *
+   * @param {string[]} rooms
+   * @param {string} event
+   * @param {Object} payload
+   */
+  emitToRooms = (rooms, event, payload) => {
+    if (!this.io || !Array.isArray(rooms) || rooms.length === 0) return;
+    try {
+      const validRooms = Array.from(new Set(rooms.filter(Boolean)));
+      if (validRooms.length === 0) return;
+
+      let emitter = this.io;
+      for (const room of validRooms) {
+        emitter = emitter.to(room);
+      }
+      emitter.emit(event, payload);
+    } catch (err) {
+      console.warn(`[Socket Warning] emitToRooms failed:`, err.message);
     }
   };
 
