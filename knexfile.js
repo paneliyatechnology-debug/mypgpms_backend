@@ -13,6 +13,7 @@ const knexConfig = {
       user: process.env.DB_USER || 'root',
       password: process.env.DB_PASSWORD || '',
       database: process.env.DB_NAME || 'pg_backend_db',
+      timezone: '+05:30',
     },
     pool: {
       min: 2,
@@ -57,6 +58,7 @@ const knexConfig = {
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
+      timezone: process.env.DB_TIMEZONE || '+05:30',
       ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: true } : false,
     },
     pool: {

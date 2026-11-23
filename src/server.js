@@ -1,3 +1,8 @@
+// Enforce default timezone to Asia/Kolkata (IST) for consistent datetime handling across environments
+if (!process.env.TZ) {
+  process.env.TZ = 'Asia/Kolkata';
+}
+
 import http from 'http';
 import app from './app.js';
 import config from './config/index.js';

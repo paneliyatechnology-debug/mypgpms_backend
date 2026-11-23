@@ -26,19 +26,19 @@ class NoticeService {
   formatNotice = (row, srNo = null) => {
     if (!row) return null;
 
-    // Format schedule / delivery date
+    // Format schedule / delivery date in IST (+05:30)
     let scheduleDateStr = '-';
     if (row.scheduled_at) {
-      scheduleDateStr = moment(row.scheduled_at).format('DD MMM YYYY, hh:mm A');
+      scheduleDateStr = moment(row.scheduled_at).utcOffset('+05:30').format('DD MMM YYYY, hh:mm A');
     } else if (row.sent_at) {
-      scheduleDateStr = moment(row.sent_at).format('DD MMM YYYY, hh:mm A');
+      scheduleDateStr = moment(row.sent_at).utcOffset('+05:30').format('DD MMM YYYY, hh:mm A');
     } else if (row.created_at) {
-      scheduleDateStr = moment(row.created_at).format('DD MMM YYYY, hh:mm A');
+      scheduleDateStr = moment(row.created_at).utcOffset('+05:30').format('DD MMM YYYY, hh:mm A');
     }
 
-    // Format resident display timestamp: e.g. "24 March 2026 • 10:30 AM"
+    // Format resident display timestamp in IST (+05:30): e.g. "24 March 2026 • 10:30 AM"
     const effectiveDate = row.sent_at || row.scheduled_at || row.created_at;
-    const residentDateTime = effectiveDate ? moment(effectiveDate).format('DD MMMM YYYY • hh:mm A') : '-';
+    const residentDateTime = effectiveDate ? moment(effectiveDate).utcOffset('+05:30').format('DD MMMM YYYY • hh:mm A') : '-';
 
     // Format audience label
     let audienceLabel = 'All Residents';
@@ -94,6 +94,67 @@ class NoticeService {
       created_at: row.created_at,
       updated_at: row.updated_at,
     };
+  };
+
+  /**
+   * Helper: Parse scheduled datetime safely in Indian Standard Time (Asia/Kolkata, UTC+05:30)
+   * Ensures identical interpretation on local machines (IST) and cloud servers (UTC).
+   *
+   * @param {string|Date|null} schedAt - Raw scheduled_at ISO / date string
+   * @param {string|null} schedDate - Date string (YYYY-MM-DD or DD-MM-YYYY)
+   * @param {string|null} schedTime - Time string (e.g. 10:00 AM or 18:00)
+   * @returns {Date|null} Exact UTC JavaScript Date object
+   */
+  parseScheduledAt = (schedAt, schedDate, schedTime) => {
+    if (schedAt) {
+      if (schedAt instanceof Date) return schedAt;
+      const str = String(schedAt).trim();
+      if (!str) return null;
+      // If client provided explicit timezone offset (Z or +/-HH:mm), parse directly
+      if (str.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(str)) {
+        return moment(str).toDate();
+      }
+      // Without timezone: explicitly interpret in India Standard Time (+05:30)
+      const clean = str.replace('T', ' ');
+      const withOffset = `${clean} +05:30`;
+      const parsed = moment(withOffset, [
+        'YYYY-MM-DD HH:mm:ss Z',
+        'YYYY-MM-DD HH:mm Z',
+        'YYYY-MM-DD hh:mm A Z',
+        'YYYY-MM-DD h:mm A Z',
+        'YYYY-MM-DD Z',
+      ]);
+      if (parsed.isValid()) return parsed.toDate();
+      return moment(str).toDate();
+    }
+
+    if (schedDate) {
+      const dateStr = String(schedDate).trim();
+      if (!dateStr) return null;
+      const timePart = (schedTime || '10:00 AM').trim();
+      const raw = `${dateStr} ${timePart} +05:30`;
+      const parsed = moment(raw, [
+        'YYYY-MM-DD hh:mm A Z',
+        'YYYY-MM-DD h:mm A Z',
+        'YYYY-MM-DD hh:mm a Z',
+        'YYYY-MM-DD h:mm a Z',
+        'YYYY-MM-DD HH:mm:ss Z',
+        'YYYY-MM-DD HH:mm Z',
+        'DD MMM YYYY hh:mm A Z',
+        'DD MMM YYYY h:mm A Z',
+        'DD-MM-YYYY HH:mm Z',
+        'DD/MM/YYYY HH:mm Z',
+        'DD-MM-YYYY hh:mm A Z',
+        'DD/MM/YYYY hh:mm A Z',
+        'DD-MM-YYYY h:mm A Z',
+        'DD/MM/YYYY h:mm A Z',
+        'YYYY-MM-DD Z',
+      ]);
+      if (parsed.isValid()) return parsed.toDate();
+      return moment(`${dateStr} ${timePart}`).toDate();
+    }
+
+    return null;
   };
 
   /**
@@ -527,34 +588,8 @@ class NoticeService {
       targetBranchId = Number(data.branch_id);
     }
 
-    // Resolve scheduled datetime
-    let scheduledAt = null;
-    if (data.scheduled_at) {
-      scheduledAt = moment(data.scheduled_at).toDate();
-    } else if (data.schedule_date) {
-      const timePart = (data.schedule_time || '10:00 AM').trim();
-      const parsed = moment(`${String(data.schedule_date).trim()} ${timePart}`, [
-        'YYYY-MM-DD hh:mm A',
-        'YYYY-MM-DD h:mm A',
-        'YYYY-MM-DD hh:mm a',
-        'YYYY-MM-DD h:mm a',
-        'YYYY-MM-DD HH:mm:ss',
-        'YYYY-MM-DD HH:mm',
-        'DD MMM YYYY hh:mm A',
-        'DD MMM YYYY h:mm A',
-        'DD-MM-YYYY HH:mm',
-        'DD/MM/YYYY HH:mm',
-        'DD-MM-YYYY h:mm A',
-        'DD/MM/YYYY h:mm A',
-        'DD-MM-YYYY hh:mm A',
-        'DD/MM/YYYY hh:mm A',
-      ]);
-      if (parsed.isValid()) {
-        scheduledAt = parsed.toDate();
-      } else {
-        scheduledAt = moment(data.schedule_date).toDate();
-      }
-    }
+    // Resolve scheduled datetime in India Standard Time (+05:30)
+    const scheduledAt = this.parseScheduledAt(data.scheduled_at, data.schedule_date, data.schedule_time);
 
     // Resolve status: default status is 'draft' unless scheduled or sent
     const requestedStatus = (data.status || '').toLowerCase().trim();
@@ -694,15 +729,11 @@ class NoticeService {
       updatePayload.target_resident_id = data.resident_id ? Number(data.resident_id) : null;
     }
 
-    // Schedule updates
+    // Schedule updates in India Standard Time (+05:30)
     let updatedScheduledAt = undefined;
     if (data.scheduled_at !== undefined || data.schedule_date !== undefined) {
-      if (data.scheduled_at) {
-        updatedScheduledAt = moment(data.scheduled_at).toDate();
-      } else if (data.schedule_date) {
-        const timePart = data.schedule_time || '10:00 AM';
-        const parsed = moment(`${data.schedule_date} ${timePart}`, ['YYYY-MM-DD hh:mm A', 'DD MMM YYYY hh:mm A', 'YYYY-MM-DD HH:mm', 'DD-MM-YYYY HH:mm']);
-        updatedScheduledAt = parsed.isValid() ? parsed.toDate() : moment(data.schedule_date).toDate();
+      if (data.scheduled_at || data.schedule_date) {
+        updatedScheduledAt = this.parseScheduledAt(data.scheduled_at, data.schedule_date, data.schedule_time);
       } else {
         updatedScheduledAt = null;
       }

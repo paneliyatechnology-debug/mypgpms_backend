@@ -21,8 +21,10 @@ const runPublishTask = async () => {
     if (result && result.published_count > 0) {
       console.log(`[Cron] Auto-published ${result.published_count} scheduled notice(s): [${result.notice_ids.join(', ')}]`);
     }
+    return result;
   } catch (err) {
     console.warn('[Cron] Scheduled notices publication error:', err.message);
+    return { published_count: 0, notice_ids: [], error: err.message };
   }
 };
 
