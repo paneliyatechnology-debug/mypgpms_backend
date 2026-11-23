@@ -203,11 +203,12 @@ class NoticeService {
 
         // Emit real-time socket event to target audience and admin dashboard
         try {
-          this.emitNoticeRealTime({
+          await this.emitNoticeRealTime({
             id: notice.id,
             pg_id: notice.pg_id,
             branch_id: notice.branch_id,
             target_resident_id: notice.target_resident_id,
+            target_room_id: notice.target_room_id,
             audience_type: notice.audience_type,
             title: notice.title,
             category: notice.category,
@@ -650,11 +651,12 @@ class NoticeService {
     });
 
     if (status === 'sent') {
-      this.emitNoticeRealTime({
+      await this.emitNoticeRealTime({
         id,
         pg_id: context.pg_id,
         branch_id: targetBranchId,
         target_resident_id: targetResidentId,
+        target_room_id: targetRoomId,
         audience_type: audienceType,
         title: data.title.trim(),
         category: data.category ? data.category.trim() : 'General',
@@ -807,11 +809,12 @@ class NoticeService {
     // If transitioned to sent status, broadcast immediately in real time
     if (updatePayload.status === 'sent' && existing.status !== 'sent') {
       try {
-        this.emitNoticeRealTime({
+        await this.emitNoticeRealTime({
           id: existing.id,
           pg_id: existing.pg_id,
           branch_id: updatePayload.branch_id !== undefined ? updatePayload.branch_id : existing.branch_id,
-          target_resident_id: updatePayload.target_resident_id !== undefined ? updatePayload.target_resident_id : existing.target_resident_id,
+          target_resident_id: updatePayload.target_resident_id !== undefined ? updatePayload.target_resident_id : (existing.target_resident_id || existing.resident_id),
+          target_room_id: updatePayload.target_room_id !== undefined ? updatePayload.target_room_id : (existing.target_room_id || existing.room_id),
           audience_type: updatePayload.audience_type !== undefined ? updatePayload.audience_type : existing.audience_type,
           title: updatePayload.title || existing.title,
           category: updatePayload.category || existing.category,
@@ -908,11 +911,12 @@ class NoticeService {
       updated_at: db.fn.now(),
     });
 
-    this.emitNoticeRealTime({
+    await this.emitNoticeRealTime({
       id: existing.id,
       pg_id: existing.pg_id,
       branch_id: existing.branch_id,
-      target_resident_id: existing.target_resident_id,
+      target_resident_id: existing.resident_id || existing.target_resident_id,
+      target_room_id: existing.room_id || existing.target_room_id,
       audience_type: existing.audience_type,
       title: existing.title,
       category: existing.category,
@@ -942,31 +946,106 @@ class NoticeService {
   };
 
   /**
-   * Helper: Emit real-time notice socket event based on audience targeting
+   * Helper: Emit real-time notice socket event based on audience targeting.
+   * Emits to both PG/Branch rooms and directly to target residents' private rooms (user:${resident_id})
+   * for guaranteed real-time delivery across web, mobile, and Postman clients.
+   *
    * @param {Object} notice
    */
-  emitNoticeRealTime = (notice) => {
-    const payload = {
-      id: notice.id,
-      title: notice.title,
-      category: notice.category,
-      priority: notice.priority,
-      content: notice.content,
-      sent_at: notice.sent_at || moment().toISOString(),
-      audience_type: notice.audience_type,
-    };
+  emitNoticeRealTime = async (notice) => {
+    try {
+      const payload = {
+        id: Number(notice.id),
+        pg_id: notice.pg_id ? Number(notice.pg_id) : null,
+        branch_id: notice.branch_id ? Number(notice.branch_id) : null,
+        title: notice.title,
+        category: notice.category || 'General',
+        priority: (notice.priority || 'medium').toLowerCase(),
+        content: notice.content,
+        summary: (notice.content || '').replace(/<[^>]*>/g, '').trim().slice(0, 120),
+        sent_at: notice.sent_at || moment().toISOString(),
+        audience_type: notice.audience_type || 'all',
+        date_time: moment(notice.sent_at || new Date()).utcOffset('+05:30').format('DD MMMM YYYY • hh:mm A'),
+      };
 
-    if (notice.audience_type === 'resident' && notice.target_resident_id) {
-      socketService.emitToUser(notice.target_resident_id, SOCKET_EVENTS.NOTICE_NEW, payload);
-    } else if ((notice.audience_type === 'branch' || notice.audience_type === 'room') && notice.branch_id) {
-      socketService.emitToBranch(notice.branch_id, SOCKET_EVENTS.NOTICE_NEW, payload);
-    } else {
-      socketService.emitToPg(notice.pg_id, SOCKET_EVENTS.NOTICE_NEW, payload);
-    }
+      const notifPayload = {
+        id: Number(notice.id),
+        notice_id: Number(notice.id),
+        title: notice.title,
+        message: notice.title,
+        summary: payload.summary,
+        category: payload.category,
+        priority: payload.priority,
+        sent_at: payload.sent_at,
+        date_time: payload.date_time,
+      };
 
-    // Always notify Admins so the Admin Dashboard and Stats table refresh in real time
-    if (notice.audience_type !== 'all') {
-      socketService.emitToPgAdmins(notice.pg_id, SOCKET_EVENTS.NOTICE_NEW, payload);
+      const pgId = notice.pg_id ? Number(notice.pg_id) : null;
+      const audienceType = notice.audience_type || 'all';
+      const targetResidentId = notice.target_resident_id || notice.resident_id || null;
+      const targetRoomId = notice.target_room_id || notice.room_id || null;
+      const targetBranchId = notice.branch_id ? Number(notice.branch_id) : null;
+
+      // 1. Audience: Individual Resident
+      if (audienceType === 'resident' && targetResidentId) {
+        socketService.emitToUser(targetResidentId, SOCKET_EVENTS.NOTICE_NEW, payload);
+        socketService.emitToUser(targetResidentId, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
+      }
+      // 2. Audience: Specific Room
+      else if (audienceType === 'room' && targetRoomId) {
+        const roomStays = await db('resident_pg_stays')
+          .where({ room_id: targetRoomId, status: 'active' })
+          .whereNull('deleted_at')
+          .select('resident_id');
+
+        for (const stay of roomStays) {
+          socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTICE_NEW, payload);
+          socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
+        }
+
+        if (targetBranchId) {
+          socketService.emitToBranch(targetBranchId, SOCKET_EVENTS.NOTICE_NEW, payload);
+        }
+      }
+      // 3. Audience: Specific Branch
+      else if (audienceType === 'branch' && targetBranchId) {
+        const branchStays = await db('resident_pg_stays')
+          .where({ branch_id: targetBranchId, status: 'active' })
+          .whereNull('deleted_at')
+          .select('resident_id');
+
+        for (const stay of branchStays) {
+          socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTICE_NEW, payload);
+          socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
+        }
+
+        socketService.emitToBranch(targetBranchId, SOCKET_EVENTS.NOTICE_NEW, payload);
+      }
+      // 4. Audience: All Residents under Property
+      else {
+        if (pgId) {
+          const pgStays = await db('resident_pg_stays')
+            .where({ pg_id: pgId, status: 'active' })
+            .whereNull('deleted_at')
+            .select('resident_id');
+
+          for (const stay of pgStays) {
+            socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTICE_NEW, payload);
+            socketService.emitToUser(stay.resident_id, SOCKET_EVENTS.NOTIFICATION_NEW, notifPayload);
+          }
+
+          socketService.emitToPg(pgId, SOCKET_EVENTS.NOTICE_NEW, payload);
+        } else {
+          socketService.emitToAll(SOCKET_EVENTS.NOTICE_NEW, payload);
+        }
+      }
+
+      // 5. Always notify PG Admins and update admin statistics
+      if (pgId) {
+        socketService.emitToPgAdmins(pgId, SOCKET_EVENTS.NOTICE_NEW, payload);
+      }
+    } catch (err) {
+      console.warn(`[NoticeService] emitNoticeRealTime error:`, err.message);
     }
   };
 
