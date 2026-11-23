@@ -105,13 +105,17 @@ class NoticeService {
   publishDueScheduledNotices = async () => {
     try {
       const now = new Date();
+      const nowEpoch = Math.floor(now.getTime() / 1000);
 
       // 1. Find all scheduled notices that are due for publication
       const dueNotices = await db('notices')
-        .where('status', 'scheduled')
+        .whereRaw('LOWER(status) = ?', ['scheduled'])
         .whereNotNull('scheduled_at')
         .where((qb) => {
-          qb.where('scheduled_at', '<=', now).orWhere('scheduled_at', '<=', db.fn.now());
+          qb.where('scheduled_at', '<=', now)
+            .orWhere('scheduled_at', '<=', db.fn.now())
+            .orWhereRaw('UNIX_TIMESTAMP(scheduled_at) <= UNIX_TIMESTAMP(NOW())')
+            .orWhereRaw('UNIX_TIMESTAMP(scheduled_at) <= ?', [nowEpoch]);
         })
         .whereNull('deleted_at')
         .select('*');
@@ -125,7 +129,7 @@ class NoticeService {
       // 2. Transition their status to 'sent'
       await db('notices')
         .whereIn('id', dueIds)
-        .where('status', 'scheduled')
+        .whereRaw('LOWER(status) = ?', ['scheduled'])
         .update({
           status: 'sent',
           sent_at: db.fn.now(),
@@ -136,7 +140,7 @@ class NoticeService {
       for (const notice of dueNotices) {
         const sentTime = new Date().toISOString();
 
-        // Emit real-time socket event to target audience
+        // Emit real-time socket event to target audience and admin dashboard
         try {
           this.emitNoticeRealTime({
             id: notice.id,
@@ -528,8 +532,23 @@ class NoticeService {
     if (data.scheduled_at) {
       scheduledAt = moment(data.scheduled_at).toDate();
     } else if (data.schedule_date) {
-      const timePart = data.schedule_time || '10:00 AM';
-      const parsed = moment(`${data.schedule_date} ${timePart}`, ['YYYY-MM-DD hh:mm A', 'DD MMM YYYY hh:mm A', 'YYYY-MM-DD HH:mm', 'DD-MM-YYYY HH:mm']);
+      const timePart = (data.schedule_time || '10:00 AM').trim();
+      const parsed = moment(`${String(data.schedule_date).trim()} ${timePart}`, [
+        'YYYY-MM-DD hh:mm A',
+        'YYYY-MM-DD h:mm A',
+        'YYYY-MM-DD hh:mm a',
+        'YYYY-MM-DD h:mm a',
+        'YYYY-MM-DD HH:mm:ss',
+        'YYYY-MM-DD HH:mm',
+        'DD MMM YYYY hh:mm A',
+        'DD MMM YYYY h:mm A',
+        'DD-MM-YYYY HH:mm',
+        'DD/MM/YYYY HH:mm',
+        'DD-MM-YYYY h:mm A',
+        'DD/MM/YYYY h:mm A',
+        'DD-MM-YYYY hh:mm A',
+        'DD/MM/YYYY hh:mm A',
+      ]);
       if (parsed.isValid()) {
         scheduledAt = parsed.toDate();
       } else {
@@ -549,7 +568,7 @@ class NoticeService {
       status = 'sent';
       sentAt = moment().toDate();
       scheduledAt = null;
-    } else if (requestedStatus === 'scheduled' || (scheduledAt && requestedStatus !== 'draft')) {
+    } else if (requestedStatus === 'scheduled' || scheduledAt) {
       if (scheduledAt && moment(scheduledAt).isSameOrBefore(moment())) {
         status = 'sent';
         sentAt = moment().toDate();
@@ -902,6 +921,11 @@ class NoticeService {
       socketService.emitToBranch(notice.branch_id, SOCKET_EVENTS.NOTICE_NEW, payload);
     } else {
       socketService.emitToPg(notice.pg_id, SOCKET_EVENTS.NOTICE_NEW, payload);
+    }
+
+    // Always notify Admins so the Admin Dashboard and Stats table refresh in real time
+    if (notice.audience_type !== 'all') {
+      socketService.emitToPgAdmins(notice.pg_id, SOCKET_EVENTS.NOTICE_NEW, payload);
     }
   };
 

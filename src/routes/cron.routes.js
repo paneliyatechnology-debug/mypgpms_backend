@@ -13,19 +13,27 @@ const router = Router();
 
 /**
  * Scheduled Recurring Task: Auto-publish due scheduled notices
- * Runs every minute to transition scheduled notices whose scheduled_at <= NOW() to 'sent'.
+ * Runs continuously in background (every 30 seconds) to detect and publish scheduled notices as soon as due.
  */
-cron.schedule(
-  '* * * * *',
-  async () => {
-    try {
-      await noticeService.publishDueScheduledNotices();
-    } catch (err) {
-      console.warn('[Cron] Scheduled notices publication error:', err.message);
+const runPublishTask = async () => {
+  try {
+    const result = await noticeService.publishDueScheduledNotices();
+    if (result && result.published_count > 0) {
+      console.log(`[Cron] Auto-published ${result.published_count} scheduled notice(s): [${result.notice_ids.join(', ')}]`);
     }
-  },
-  { timezone: 'Asia/Kolkata' }
-);
+  } catch (err) {
+    console.warn('[Cron] Scheduled notices publication error:', err.message);
+  }
+};
+
+// 1. Initial check immediately upon startup / module load
+runPublishTask();
+
+// 2. Schedule recurring checks with node-cron every 30 seconds (at :00 and :30)
+cron.schedule('*/30 * * * * *', runPublishTask);
+
+// 3. Watchdog fallback interval (every 30 seconds) ensuring continuous background execution
+setInterval(runPublishTask, 30000);
 
 /**
  * Scheduled Daily Task: Automated Payment Proof, Receipts & Uploads Cleanup
