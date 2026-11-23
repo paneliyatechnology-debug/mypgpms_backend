@@ -18,3 +18,4 @@ export const cleanPaymentUploads = async () => {
 export default {
   cleanPaymentUploads,
 };
+

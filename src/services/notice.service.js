@@ -98,20 +98,98 @@ class NoticeService {
 
   /**
    * Automatically transition any scheduled notices whose schedule time has arrived to 'sent'
+   * and broadcast them in real time to target audiences, emit stats update, and record audit log.
+   *
+   * @returns {Promise<{ published_count: number, notice_ids: number[] }>}
    */
   publishDueScheduledNotices = async () => {
     try {
-      await db('notices')
+      const now = new Date();
+
+      // 1. Find all scheduled notices that are due for publication
+      const dueNotices = await db('notices')
         .where('status', 'scheduled')
-        .where('scheduled_at', '<=', db.fn.now())
+        .whereNotNull('scheduled_at')
+        .where((qb) => {
+          qb.where('scheduled_at', '<=', now).orWhere('scheduled_at', '<=', db.fn.now());
+        })
         .whereNull('deleted_at')
+        .select('*');
+
+      if (!dueNotices || dueNotices.length === 0) {
+        return { published_count: 0, notice_ids: [] };
+      }
+
+      const dueIds = dueNotices.map((n) => n.id);
+
+      // 2. Transition their status to 'sent'
+      await db('notices')
+        .whereIn('id', dueIds)
+        .where('status', 'scheduled')
         .update({
           status: 'sent',
           sent_at: db.fn.now(),
           updated_at: db.fn.now(),
         });
+
+      // 3. For each published notice: emit real-time notice, stats update, and audit log
+      for (const notice of dueNotices) {
+        const sentTime = new Date().toISOString();
+
+        // Emit real-time socket event to target audience
+        try {
+          this.emitNoticeRealTime({
+            id: notice.id,
+            pg_id: notice.pg_id,
+            branch_id: notice.branch_id,
+            target_resident_id: notice.target_resident_id,
+            audience_type: notice.audience_type,
+            title: notice.title,
+            category: notice.category,
+            priority: notice.priority,
+            content: notice.content,
+            sent_at: sentTime,
+          });
+        } catch (emitErr) {
+          console.warn(`[NoticeService] Failed to emit real-time notice #${notice.id}:`, emitErr.message);
+        }
+
+        // Emit socket stats update for admin dashboards
+        try {
+          socketService.emitStatsUpdated(notice.pg_id, SOCKET_EVENTS.NOTICE_STATS_UPDATED, {
+            notice_id: notice.id,
+            status: 'sent',
+          });
+        } catch (statsErr) {
+          console.warn(`[NoticeService] Failed to emit stats update for notice #${notice.id}:`, statsErr.message);
+        }
+
+        // Record audit trail
+        try {
+          auditService.log({
+            pg_id: notice.pg_id,
+            branch_id: notice.branch_id,
+            user_id: notice.created_by,
+            module: AUDIT_MODULES.NOTICE,
+            action: AUDIT_ACTIONS.SEND,
+            entity_type: 'notice',
+            entity_id: notice.id,
+            description: `Auto-published scheduled notice "${notice.title}"`,
+            new_values: { status: 'sent', scheduled_at: notice.scheduled_at, sent_at: sentTime },
+          });
+        } catch (auditErr) {
+          console.warn(`[NoticeService] Failed to log audit for notice #${notice.id}:`, auditErr.message);
+        }
+      }
+
+      console.log(`[NoticeService] Successfully published ${dueNotices.length} scheduled notice(s): [${dueIds.join(', ')}]`);
+      return {
+        published_count: dueNotices.length,
+        notice_ids: dueIds,
+      };
     } catch (err) {
       console.warn('[NoticeService] Background notice transition warning:', err.message);
+      return { published_count: 0, notice_ids: [], error: err.message };
     }
   };
 
@@ -459,7 +537,7 @@ class NoticeService {
       }
     }
 
-    // Resolve status: default status is strictly 'draft' upon creation
+    // Resolve status: default status is 'draft' unless scheduled or sent
     const requestedStatus = (data.status || '').toLowerCase().trim();
     let status = 'draft';
     let sentAt = null;
@@ -471,11 +549,12 @@ class NoticeService {
       status = 'sent';
       sentAt = moment().toDate();
       scheduledAt = null;
-    } else if (requestedStatus === 'scheduled') {
-      status = 'scheduled';
+    } else if (requestedStatus === 'scheduled' || (scheduledAt && requestedStatus !== 'draft')) {
       if (scheduledAt && moment(scheduledAt).isSameOrBefore(moment())) {
         status = 'sent';
-        sentAt = scheduledAt;
+        sentAt = moment().toDate();
+      } else {
+        status = 'scheduled';
       }
     } else {
       status = 'draft';
@@ -587,23 +666,45 @@ class NoticeService {
     }
 
     // Schedule updates
+    let updatedScheduledAt = undefined;
     if (data.scheduled_at !== undefined || data.schedule_date !== undefined) {
       if (data.scheduled_at) {
-        updatePayload.scheduled_at = moment(data.scheduled_at).toDate();
+        updatedScheduledAt = moment(data.scheduled_at).toDate();
       } else if (data.schedule_date) {
         const timePart = data.schedule_time || '10:00 AM';
-        const parsed = moment(`${data.schedule_date} ${timePart}`, ['YYYY-MM-DD hh:mm A', 'DD MMM YYYY hh:mm A', 'YYYY-MM-DD HH:mm']);
-        updatePayload.scheduled_at = parsed.isValid() ? parsed.toDate() : moment(data.schedule_date).toDate();
+        const parsed = moment(`${data.schedule_date} ${timePart}`, ['YYYY-MM-DD hh:mm A', 'DD MMM YYYY hh:mm A', 'YYYY-MM-DD HH:mm', 'DD-MM-YYYY HH:mm']);
+        updatedScheduledAt = parsed.isValid() ? parsed.toDate() : moment(data.schedule_date).toDate();
       } else {
-        updatePayload.scheduled_at = null;
+        updatedScheduledAt = null;
       }
+      updatePayload.scheduled_at = updatedScheduledAt;
     }
 
     if (data.status !== undefined) {
       const st = data.status.toLowerCase().trim();
-      updatePayload.status = st;
-      if (st === 'sent' && !existing.sent_at) {
-        updatePayload.sent_at = db.fn.now();
+      if (st === 'scheduled') {
+        const effectiveScheduledAt = updatedScheduledAt !== undefined ? updatedScheduledAt : existing.scheduled_at;
+        if (effectiveScheduledAt && moment(effectiveScheduledAt).isSameOrBefore(moment())) {
+          updatePayload.status = 'sent';
+          if (!existing.sent_at) updatePayload.sent_at = db.fn.now();
+        } else {
+          updatePayload.status = 'scheduled';
+        }
+      } else {
+        updatePayload.status = st;
+        if (st === 'sent' && !existing.sent_at) {
+          updatePayload.sent_at = db.fn.now();
+        }
+      }
+    } else if (updatedScheduledAt !== undefined && existing.status !== 'sent') {
+      // If schedule timestamp was set or updated without explicit status on a non-sent notice:
+      if (updatedScheduledAt) {
+        if (moment(updatedScheduledAt).isSameOrBefore(moment())) {
+          updatePayload.status = 'sent';
+          if (!existing.sent_at) updatePayload.sent_at = db.fn.now();
+        } else {
+          updatePayload.status = 'scheduled';
+        }
       }
     }
 
@@ -643,6 +744,26 @@ class NoticeService {
 
     await db('notices').where({ id }).update(updatePayload);
 
+    // If transitioned to sent status, broadcast immediately in real time
+    if (updatePayload.status === 'sent' && existing.status !== 'sent') {
+      try {
+        this.emitNoticeRealTime({
+          id: existing.id,
+          pg_id: existing.pg_id,
+          branch_id: updatePayload.branch_id !== undefined ? updatePayload.branch_id : existing.branch_id,
+          target_resident_id: updatePayload.target_resident_id !== undefined ? updatePayload.target_resident_id : existing.target_resident_id,
+          audience_type: updatePayload.audience_type !== undefined ? updatePayload.audience_type : existing.audience_type,
+          title: updatePayload.title || existing.title,
+          category: updatePayload.category || existing.category,
+          priority: updatePayload.priority || existing.priority,
+          content: updatePayload.content || existing.content,
+          sent_at: moment().toISOString(),
+        });
+      } catch (emitErr) {
+        console.warn(`[NoticeService] Update real-time broadcast failed for #${id}:`, emitErr.message);
+      }
+    }
+
     const logNewValues = { ...updatePayload };
     delete logNewValues.updated_at;
     if (logNewValues.sent_at) delete logNewValues.sent_at;
@@ -657,12 +778,15 @@ class NoticeService {
       action: AUDIT_ACTIONS.UPDATE,
       entity_type: 'notice',
       entity_id: id,
-      description: `Updated notice "${existing.title}"`,
+      description: `Updated notice "${existing.title}"${updatePayload.status === 'sent' && existing.status !== 'sent' ? ' (Broadcasted)' : ''}`,
       new_values: logNewValues,
     });
 
     try {
-      socketService.emitStatsUpdated(existing.pg_id, SOCKET_EVENTS.NOTICE_STATS_UPDATED, { notice_id: id });
+      socketService.emitStatsUpdated(existing.pg_id, SOCKET_EVENTS.NOTICE_STATS_UPDATED, {
+        notice_id: id,
+        status: updatePayload.status || existing.status,
+      });
     } catch (e) {}
 
     return { id: Number(id) };
@@ -774,7 +898,7 @@ class NoticeService {
 
     if (notice.audience_type === 'resident' && notice.target_resident_id) {
       socketService.emitToUser(notice.target_resident_id, SOCKET_EVENTS.NOTICE_NEW, payload);
-    } else if (notice.audience_type === 'branch' && notice.branch_id) {
+    } else if ((notice.audience_type === 'branch' || notice.audience_type === 'room') && notice.branch_id) {
       socketService.emitToBranch(notice.branch_id, SOCKET_EVENTS.NOTICE_NEW, payload);
     } else {
       socketService.emitToPg(notice.pg_id, SOCKET_EVENTS.NOTICE_NEW, payload);
