@@ -1,8 +1,16 @@
 import { Router } from 'express';
-import { getDashboard } from '../controllers/dashboard.controller.js';
-import { authenticate } from '../middlewares/auth.middleware.js';
+import { getDashboard, getSuperAdminDashboard } from '../controllers/dashboard.controller.js';
+import { authenticate, authorize } from '../middlewares/auth.middleware.js';
+import { ROLES } from '../constants/index.js';
 
 const router = Router();
+
+/**
+ * @route   GET /api/v1/dashboard/superadmin
+ * @desc    Get platform-wide Super Admin KPI overview, 6-month revenue trajectory, and PG distribution
+ * @access  Private (Super Admin)
+ */
+router.get('/superadmin', authenticate, authorize(ROLES.SUPER_ADMIN), getSuperAdminDashboard);
 
 /**
  * @route   GET /api/v1/dashboard

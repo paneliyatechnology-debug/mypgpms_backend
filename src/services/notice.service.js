@@ -68,6 +68,8 @@ class NoticeService {
 
     return {
       id: Number(row.id),
+      pg_id: row.pg_id ? Number(row.pg_id) : null,
+      pg_name: row.pg_name || null,
       ...(srNo !== null ? { sr_no: srNo } : {}),
       title: row.title,
       category: row.category || 'General',
@@ -271,19 +273,27 @@ class NoticeService {
    * @param {number|string|null} preferredBranchId - Optional specific branch ID
    * @returns {Promise<{ pg_id: number, branch_id: number|null, accessibleBranchIds: number[]|null }>}
    */
-  resolveUserContext = async (user, preferredBranchId = null) => {
+  resolveUserContext = async (user, preferredBranchId = null, preferredPgId = null) => {
     if (user.role === ROLES.SUPER_ADMIN) {
-      let pgId = user.pg_id;
+      let pgId = preferredPgId ? Number(preferredPgId) : null;
+      if (!pgId && preferredBranchId && preferredBranchId !== 'all') {
+        const b = await db('branches').where({ id: Number(preferredBranchId) }).whereNull('deleted_at').first();
+        if (b) pgId = Number(b.pg_id);
+      }
+      if (!pgId && user.pg_id) {
+        pgId = Number(user.pg_id);
+      }
       if (!pgId) {
         const firstPg = await db('pgs').whereNull('deleted_at').orderBy('id', 'asc').first();
         pgId = firstPg?.id || 1;
       }
       return {
         pg_id: Number(pgId),
-        branch_id: preferredBranchId ? Number(preferredBranchId) : null,
+        branch_id: preferredBranchId && preferredBranchId !== 'all' ? Number(preferredBranchId) : null,
         room_id: null,
         accessibleBranchIds: null,
         isAdmin: true,
+        isSuperAdmin: true,
       };
     }
 
@@ -362,12 +372,19 @@ class NoticeService {
   getStats = async ({ user, pg_id = null, branch_id = null }) => {
     await this.publishDueScheduledNotices();
 
-    const context = await this.resolveUserContext(user, branch_id);
-    const effectivePgId = pg_id ? Number(pg_id) : context.pg_id;
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+    const context = await this.resolveUserContext(user, branch_id, pg_id);
 
     const query = db('notices')
-      .where('notices.pg_id', effectivePgId)
       .whereNull('notices.deleted_at');
+
+    if (isSuperAdmin) {
+      if (pg_id && pg_id !== 'all') {
+        query.where('notices.pg_id', Number(pg_id));
+      }
+    } else {
+      query.where('notices.pg_id', pg_id && pg_id !== 'all' ? Number(pg_id) : context.pg_id);
+    }
 
     if (context.branch_id) {
       query.where((qb) => {
@@ -415,8 +432,8 @@ class NoticeService {
       limit = 10,
     } = query;
 
-    const context = await this.resolveUserContext(user, branch_id);
-    const effectivePgId = query.pg_id ? Number(query.pg_id) : context.pg_id;
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+    const context = await this.resolveUserContext(user, branch_id, query.pg_id);
 
     const currentPage = Math.max(1, parseInt(page, 10) || 1);
     const perPage = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
@@ -426,11 +443,19 @@ class NoticeService {
     const activeTab = (tab || status || 'all').toLowerCase();
 
     const baseQuery = db('notices')
-      .where('notices.pg_id', effectivePgId)
       .whereNull('notices.deleted_at')
+      .leftJoin('pgs', 'notices.pg_id', 'pgs.id')
       .leftJoin('branches', 'notices.branch_id', 'branches.id')
       .leftJoin('rooms', 'notices.target_room_id', 'rooms.id')
       .leftJoin('users as target_user', 'notices.target_resident_id', 'target_user.id');
+
+    if (isSuperAdmin) {
+      if (query.pg_id && query.pg_id !== 'all') {
+        baseQuery.where('notices.pg_id', Number(query.pg_id));
+      }
+    } else {
+      baseQuery.where('notices.pg_id', query.pg_id && query.pg_id !== 'all' ? Number(query.pg_id) : context.pg_id);
+    }
 
     // Scoping to selected branch
     if (context.branch_id) {
@@ -486,6 +511,7 @@ class NoticeService {
       .clone()
       .select(
         'notices.*',
+        'pgs.name as pg_name',
         'branches.name as branch_name',
         'rooms.room_no',
         'target_user.name as target_resident_name'
@@ -525,17 +551,24 @@ class NoticeService {
   findById = async (id, user) => {
     await this.publishDueScheduledNotices();
 
-    const context = await this.resolveUserContext(user);
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+    const context = isSuperAdmin ? null : await this.resolveUserContext(user);
 
     const row = await db('notices')
       .where('notices.id', id)
-      .where('notices.pg_id', context.pg_id)
+      .modify((qb) => {
+        if (!isSuperAdmin && context) {
+          qb.where('notices.pg_id', context.pg_id);
+        }
+      })
       .whereNull('notices.deleted_at')
+      .leftJoin('pgs', 'notices.pg_id', 'pgs.id')
       .leftJoin('branches', 'notices.branch_id', 'branches.id')
       .leftJoin('rooms', 'notices.target_room_id', 'rooms.id')
       .leftJoin('users as target_user', 'notices.target_resident_id', 'target_user.id')
       .select(
         'notices.*',
+        'pgs.name as pg_name',
         'branches.name as branch_name',
         'rooms.room_no',
         'target_user.name as target_resident_name'
@@ -558,7 +591,7 @@ class NoticeService {
    * @returns {Promise<{ id: number }>}
    */
   create = async (data, file, user) => {
-    const context = await this.resolveUserContext(user, data.branch_id);
+    const context = await this.resolveUserContext(user, data.branch_id, data.pg_id);
 
     // Resolve target audience
     const audienceType = (data.audience_type || 'all').toLowerCase();
@@ -723,6 +756,9 @@ class NoticeService {
     if (data.priority !== undefined) updatePayload.priority = data.priority.toLowerCase().trim();
     if (data.content !== undefined) updatePayload.content = data.content.trim();
 
+    if (data.pg_id !== undefined && data.pg_id !== '' && user.role === ROLES.SUPER_ADMIN) {
+      updatePayload.pg_id = Number(data.pg_id);
+    }
     if (data.audience_type !== undefined) {
       updatePayload.audience_type = data.audience_type.toLowerCase().trim();
     }

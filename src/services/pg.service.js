@@ -1,7 +1,8 @@
 import db from '../config/db.js';
 import { buildFileUrl } from '../utils/url.js';
 import { AppError } from '../utils/apiResponse.js';
-import { HTTP_STATUS } from '../constants/index.js';
+import { HTTP_STATUS, AUDIT_ACTIONS } from '../constants/index.js';
+import auditService from './audit.service.js';
 
 
 /**
@@ -153,6 +154,8 @@ class PgService {
         'users.name as owner_name',
         'users.email as owner_email',
         'users.phone as owner_phone',
+        'users.gender as owner_gender',
+        'users.address as owner_address',
         'users.profile_photo as owner_profile_photo'
       )
       .first();
@@ -175,7 +178,10 @@ class PgService {
       .whereNull('deleted_at')
       .count('id as active_residents');
 
-    pg.active_residents_count = Number(active_residents);
+    const activeCount = Number(active_residents) || 0;
+    const totalBeds = Number(pg.total_beds) || 0;
+    pg.active_residents_count = activeCount;
+    pg.occupancy_rate = totalBeds > 0 ? Math.min(100, Math.round((activeCount / totalBeds) * 100)) : 0;
     pg.logo_url = buildFileUrl('pgs', pg.logo);
     pg.owner_profile_photo_url = buildFileUrl('users', pg.owner_profile_photo);
     pg.bank_details = {
@@ -207,7 +213,9 @@ class PgService {
    * @returns {Promise<{ pgs: Array, pagination: object }>}
    */
   findAll = async ({ owner_id = null, city = '', type = '', status = '', search = '', page = 1, limit = 10 }) => {
-    const offset = (page - 1) * limit;
+    const current_page = Math.max(1, parseInt(page, 10) || 1);
+    const per_page = Math.max(1, parseInt(limit, 10) || 10);
+    const offset = (current_page - 1) * per_page;
 
     let query = db('pgs')
       .whereNull('pgs.deleted_at')
@@ -219,10 +227,17 @@ class PgService {
         'users.name as owner_name',
         'users.email as owner_email',
         'users.phone as owner_phone',
+        'users.gender as owner_gender',
+        'users.address as owner_address',
         'users.profile_photo as owner_profile_photo'
       );
 
-    let count_query = db('pgs').whereNull('pgs.deleted_at').count('pgs.id as total');
+    let count_query = db('pgs')
+      .whereNull('pgs.deleted_at')
+      .leftJoin('users', (join) => {
+        join.on('pgs.owner_id', '=', 'users.id').andOnNull('users.deleted_at');
+      })
+      .count('pgs.id as total');
 
     if (owner_id) {
       query = query.where('pgs.owner_id', owner_id);
@@ -250,16 +265,35 @@ class PgService {
         builder
           .where('pgs.name', 'like', search_pattern)
           .orWhere('pgs.address', 'like', search_pattern)
-          .orWhere('pgs.city', 'like', search_pattern);
+          .orWhere('pgs.city', 'like', search_pattern)
+          .orWhere('pgs.phone', 'like', search_pattern)
+          .orWhere('users.name', 'like', search_pattern)
+          .orWhere('users.email', 'like', search_pattern);
       };
       query = query.where(search_filter);
       count_query = count_query.where(search_filter);
     }
 
     const [pgs, [{ total }]] = await Promise.all([
-      query.orderBy('pgs.id', 'desc').limit(limit).offset(offset),
+      query.orderBy('pgs.id', 'desc').limit(per_page).offset(offset),
       count_query,
     ]);
+
+    const pgIds = pgs.map((p) => p.id);
+    const residentCountsMap = new Map();
+    if (pgIds.length > 0) {
+      const stayCounts = await db('resident_pg_stays')
+        .whereIn('pg_id', pgIds)
+        .where({ status: 'active' })
+        .whereNull('deleted_at')
+        .select('pg_id')
+        .count('id as active_residents')
+        .groupBy('pg_id');
+
+      stayCounts.forEach((row) => {
+        residentCountsMap.set(Number(row.pg_id), Number(row.active_residents) || 0);
+      });
+    }
 
     pgs.forEach((pg) => {
       if (typeof pg.amenities === 'string') {
@@ -269,6 +303,10 @@ class PgService {
           // Keep string
         }
       }
+      const activeCount = residentCountsMap.get(Number(pg.id)) || 0;
+      const totalBeds = Number(pg.total_beds) || 0;
+      pg.active_residents_count = activeCount;
+      pg.occupancy_rate = totalBeds > 0 ? Math.min(100, Math.round((activeCount / totalBeds) * 100)) : 0;
       pg.logo_url = buildFileUrl('pgs', pg.logo);
       pg.owner_profile_photo_url = buildFileUrl('users', pg.owner_profile_photo);
       pg.bank_details = {
@@ -281,19 +319,111 @@ class PgService {
     });
 
     const total_records = Number(total);
-    const total_pages = Math.ceil(total_records / limit);
+    const total_pages = Math.ceil(total_records / per_page) || 1;
 
     return {
       pgs,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        total: total_records,
+        page: current_page,
+        limit: per_page,
         total_records,
         total_pages,
-        has_next: page < total_pages,
-        has_prev: page > 1,
+        has_next: current_page < total_pages,
+        has_prev: current_page > 1,
       },
     };
+  };
+
+  /**
+   * Get aggregated PG KPIs, facility type distribution, and available cities
+   */
+  getStats = async () => {
+    const [summaryRow] = await db('pgs')
+      .whereNull('deleted_at')
+      .select(
+        db.raw('COUNT(id) as total_pgs'),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END), 0) as active_pgs"),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'under_review' THEN 1 ELSE 0 END), 0) as pending_pgs"),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END), 0) as suspended_pgs"),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END), 0) as inactive_pgs"),
+        db.raw('COALESCE(SUM(total_rooms), 0) as total_rooms'),
+        db.raw('COALESCE(SUM(total_beds), 0) as total_beds')
+      );
+
+    const [residentRow] = await db('resident_pg_stays')
+      .where({ status: 'active' })
+      .whereNull('deleted_at')
+      .count('id as total_residents');
+
+    const typeRows = await db('pgs')
+      .whereNull('deleted_at')
+      .select('type')
+      .count('id as count')
+      .groupBy('type');
+
+    const pg_distribution = { coed: 0, boys: 0, girls: 0 };
+    typeRows.forEach((row) => {
+      const key = String(row.type || '').toLowerCase();
+      if (key in pg_distribution) {
+        pg_distribution[key] = Number(row.count) || 0;
+      }
+    });
+
+    const cityRows = await db('pgs')
+      .whereNull('deleted_at')
+      .whereNotNull('city')
+      .where('city', '!=', '')
+      .distinct('city')
+      .orderBy('city', 'asc');
+
+    return {
+      total_pgs: Number(summaryRow?.total_pgs) || 0,
+      active_pgs: Number(summaryRow?.active_pgs) || 0,
+      pending_pgs: Number(summaryRow?.pending_pgs) || 0,
+      suspended_pgs: Number(summaryRow?.suspended_pgs) || 0,
+      inactive_pgs: Number(summaryRow?.inactive_pgs) || 0,
+      total_rooms: Number(summaryRow?.total_rooms) || 0,
+      total_beds: Number(summaryRow?.total_beds) || 0,
+      total_residents: Number(residentRow?.total_residents) || 0,
+      pg_distribution,
+      cities: cityRows.map((r) => r.city).filter(Boolean),
+    };
+  };
+
+  /**
+   * Update PG operational status (Super Admin action)
+   */
+  updateStatus = async (id, status, reason = null, req = null) => {
+    const existing = await this.findById(id);
+    if (!existing) {
+      throw new AppError('PG property not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const oldStatus = existing.status;
+    await db('pgs')
+      .where({ id })
+      .whereNull('deleted_at')
+      .update({
+        status,
+        updated_at: db.fn.now(),
+      });
+
+    const updated = await this.findById(id);
+
+    auditService.log({
+      pg_id: Number(id),
+      module: 'PGS',
+      action: AUDIT_ACTIONS.STATUS_CHANGE,
+      entity_type: 'pg',
+      entity_id: id,
+      description: `Changed PG "${existing.name}" status from ${oldStatus} to ${status}${reason ? ` (${reason})` : ''}`,
+      old_values: { status: oldStatus },
+      new_values: { status, ...(reason ? { reason } : {}) },
+      req,
+    });
+
+    return updated;
   };
 
   /**

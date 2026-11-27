@@ -70,7 +70,7 @@ class FoodMenuService {
    * - Admin: verified ownership of candidate branch or defaults to primary branch.
    * - Super Admin: allows any valid branch.
    */
-  resolveBranchContext = async (user, candidateBranchId = null) => {
+  resolveBranchContext = async (user, candidateBranchId = null, candidatePgId = null) => {
     if (user.role === ROLES.RESIDENT) {
       const stay = await db('resident_pg_stays')
         .where({ resident_id: user.id, status: 'active' })
@@ -149,9 +149,9 @@ class FoodMenuService {
     }
 
     // Super Admin
-    if (candidateBranchId) {
+    if (candidateBranchId && candidateBranchId !== 'all') {
       const branch = await db('branches')
-        .where({ id: candidateBranchId })
+        .where({ id: Number(candidateBranchId) })
         .whereNull('deleted_at')
         .first();
 
@@ -166,15 +166,18 @@ class FoodMenuService {
       };
     }
 
-    const firstBranch = await db('branches').whereNull('deleted_at').orderBy('id', 'asc').first();
-    if (!firstBranch) {
-      throw new AppError('No branches found in system', HTTP_STATUS.NOT_FOUND);
+    if (candidatePgId && candidatePgId !== 'all') {
+      return {
+        branch_id: null,
+        pg_id: Number(candidatePgId),
+        branch_name: 'All Branches',
+      };
     }
 
     return {
-      branch_id: firstBranch.id,
-      pg_id: firstBranch.pg_id,
-      branch_name: firstBranch.name,
+      branch_id: null,
+      pg_id: null,
+      branch_name: 'All Branches',
     };
   };
 
@@ -188,7 +191,10 @@ class FoodMenuService {
 
     return {
       id: item.id,
+      pg_id: item.pg_id ? Number(item.pg_id) : null,
+      pg_name: item.pg_name || null,
       branch_id: item.branch_id,
+      branch_name: item.branch_name || null,
       menu_date: FoodMenuService.formatDateStr(item.menu_date),
       day_of_week: item.day_of_week,
       meal_type: item.meal_type,
@@ -221,6 +227,7 @@ class FoodMenuService {
    */
   getMenuByDateRange = async (user, options = {}) => {
     const {
+      pg_id,
       branch_id,
       date,
       start_date,
@@ -232,7 +239,7 @@ class FoodMenuService {
       order = 'asc',
     } = options;
 
-    const branchContext = await this.resolveBranchContext(user, branch_id);
+    const branchContext = await this.resolveBranchContext(user, branch_id, pg_id);
     const todayDate = FoodMenuService.getTodayISTDate();
 
     // Determine target date range
@@ -252,9 +259,10 @@ class FoodMenuService {
     const offset = (current_page - 1) * per_page;
 
     const base_query = db('food_menus')
-      .where('food_menus.branch_id', branchContext.branch_id)
       .whereNull('food_menus.deleted_at')
       .modify((qb) => {
+        if (branchContext.branch_id) qb.where('food_menus.branch_id', branchContext.branch_id);
+        else if (branchContext.pg_id) qb.where('food_menus.pg_id', branchContext.pg_id);
         if (queryStartDate) qb.where('food_menus.menu_date', '>=', queryStartDate);
         if (queryEndDate) qb.where('food_menus.menu_date', '<=', queryEndDate);
         if (day_of_week) qb.where('food_menus.day_of_week', day_of_week.toLowerCase());
@@ -268,7 +276,9 @@ class FoodMenuService {
 
     const allItems = await base_query
       .clone()
-      .select('food_menus.*')
+      .leftJoin('branches', 'food_menus.branch_id', 'branches.id')
+      .leftJoin('pgs', 'food_menus.pg_id', 'pgs.id')
+      .select('food_menus.*', 'branches.name as branch_name', 'pgs.name as pg_name')
       .orderBy('food_menus.menu_date', sortDirection)
       .orderBy('food_menus.sort_order', sortDirection)
       .orderBy('food_menus.id', sortDirection)
@@ -354,6 +364,7 @@ class FoodMenuService {
       .select(
         'food_menus.*',
         'branches.name as branch_name',
+        'pgs.name as pg_name',
         'pgs.owner_id'
       )
       .first();
@@ -366,10 +377,7 @@ class FoodMenuService {
       throw new AppError('Access denied. You do not manage this branch menu.', HTTP_STATUS.FORBIDDEN);
     }
 
-    return {
-      ...FoodMenuService.formatMenuItem(item),
-      branch_name: item.branch_name,
-    };
+    return FoodMenuService.formatMenuItem(item);
   };
 
   getMenuItemById = this.getMenuById;
@@ -382,7 +390,10 @@ class FoodMenuService {
    * Create a single menu item (Date-wise)
    */
   createMenu = async (data, file, user) => {
-    const branchContext = await this.resolveBranchContext(user, data.branch_id);
+    const branchContext = await this.resolveBranchContext(user, data.branch_id, data.pg_id);
+    if (!branchContext.branch_id) {
+      throw new AppError('Branch is required when creating a food menu item', HTTP_STATUS.BAD_REQUEST);
+    }
     const menuDate = data.menu_date || data.date;
 
     if (!menuDate) {
@@ -796,6 +807,7 @@ class FoodMenuService {
    */
   getBranchFeedback = async (options = {}, user) => {
     const {
+      pg_id,
       branch_id,
       date,
       start_date,
@@ -806,13 +818,12 @@ class FoodMenuService {
       limit = 20,
     } = options;
 
-    const branchContext = await this.resolveBranchContext(user, branch_id);
+    const branchContext = await this.resolveBranchContext(user, branch_id, pg_id);
     const current_page = Math.max(1, parseInt(page, 10) || 1);
     const per_page = Math.max(1, parseInt(limit, 10) || 20);
     const offset = (current_page - 1) * per_page;
 
     const base_query = db('food_feedback')
-      .where('food_feedback.branch_id', branchContext.branch_id)
       .whereNull('food_feedback.deleted_at')
       .join('users as resident', 'food_feedback.resident_id', 'resident.id')
       .leftJoin('resident_pg_stays as stay', (join) => {
@@ -823,6 +834,8 @@ class FoodMenuService {
       .leftJoin('rooms', 'stay.room_id', 'rooms.id')
       .leftJoin('food_menus', 'food_feedback.menu_id', 'food_menus.id')
       .modify((qb) => {
+        if (branchContext.branch_id) qb.where('food_feedback.branch_id', branchContext.branch_id);
+        else if (branchContext.pg_id) qb.where('food_feedback.pg_id', branchContext.pg_id);
         if (date) qb.whereRaw('DATE(food_feedback.feedback_date) = ?', [date]);
         if (start_date) qb.where('food_feedback.feedback_date', '>=', `${start_date} 00:00:00`);
         if (end_date) qb.where('food_feedback.feedback_date', '<=', `${end_date} 23:59:59`);
@@ -884,13 +897,14 @@ class FoodMenuService {
    * - Star breakdown (5, 4, 3, 2, 1 star counts and percentages)
    */
   getFeedbackSummary = async (options = {}, user) => {
-    const { branch_id, date, start_date, end_date } = options;
-    const branchContext = await this.resolveBranchContext(user, branch_id);
+    const { pg_id, branch_id, date, start_date, end_date } = options;
+    const branchContext = await this.resolveBranchContext(user, branch_id, pg_id);
 
     const base_query = db('food_feedback')
-      .where('food_feedback.branch_id', branchContext.branch_id)
       .whereNull('food_feedback.deleted_at')
       .modify((qb) => {
+        if (branchContext.branch_id) qb.where('food_feedback.branch_id', branchContext.branch_id);
+        else if (branchContext.pg_id) qb.where('food_feedback.pg_id', branchContext.pg_id);
         if (date) qb.whereRaw('DATE(food_feedback.feedback_date) = ?', [date]);
         if (start_date) qb.where('food_feedback.feedback_date', '>=', `${start_date} 00:00:00`);
         if (end_date) qb.where('food_feedback.feedback_date', '<=', `${end_date} 23:59:59`);

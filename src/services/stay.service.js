@@ -590,7 +590,8 @@ class StayService {
       .leftJoin('rooms', 'checkout_requests.room_id', 'rooms.id')
       .leftJoin('floors', 'rooms.floor_id', 'floors.id')
       .leftJoin('buildings', 'rooms.building_id', 'buildings.id')
-      .leftJoin('branches', 'checkout_requests.branch_id', 'branches.id');
+      .leftJoin('branches', 'checkout_requests.branch_id', 'branches.id')
+      .leftJoin('pgs', 'checkout_requests.pg_id', 'pgs.id');
 
     let context = { isSuperAdmin: false, branchIds: [], pgId: null, pgName: 'MYPGPMS PG' };
 
@@ -599,6 +600,10 @@ class StayService {
       baseQuery.where('checkout_requests.resident_id', user.id);
     } else {
       context = await resolveUserBranches(user);
+
+      if (context.isSuperAdmin && query.pg_id && query.pg_id !== 'all') {
+        baseQuery.where('checkout_requests.pg_id', Number(query.pg_id));
+      }
 
       if (user.role === ROLES.ADMIN) {
         baseQuery.where((qb) => {
@@ -716,7 +721,8 @@ class StayService {
         'floors.floor_number',
         'buildings.name as building_name',
         'stay.bed_number',
-        'branches.name as branch_name'
+        'branches.name as branch_name',
+        'pgs.name as pg_name'
       )
       .orderBy('checkout_requests.id', 'desc');
 
@@ -753,6 +759,8 @@ class StayService {
           building_name: buildingDisplay,
           floor_name: floorDisplay,
         },
+        pg_id: r.pg_id || null,
+        pg_name: r.pg_name || null,
         branch: {
           id: r.branch_id,
           name: r.branch_name || '-',

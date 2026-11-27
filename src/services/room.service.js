@@ -462,6 +462,7 @@ export const update = async (id, data) => {
   const {
     room_no,
     room_type,
+    pg_id: input_pg_id,
     building_id: input_building_id,
     floor_id: input_floor_id,
     capacity,
@@ -471,13 +472,14 @@ export const update = async (id, data) => {
     branch_id: input_branch_id,
   } = data;
 
+  const targetPgId = input_pg_id !== undefined ? Number(input_pg_id) : room.pg_id;
   const targetBuildingId = input_building_id !== undefined ? Number(input_building_id) : room.building_id;
   const targetFloorId = input_floor_id !== undefined ? Number(input_floor_id) : room.floor_id;
 
   // Validate building if changed
-  if (input_building_id !== undefined) {
+  if (input_building_id !== undefined || input_pg_id !== undefined) {
     const building = await db('buildings')
-      .where({ id: targetBuildingId, pg_id: room.pg_id })
+      .where({ id: targetBuildingId, pg_id: targetPgId })
       .whereNull('deleted_at')
       .first();
     if (!building) {
@@ -520,6 +522,7 @@ export const update = async (id, data) => {
   const update_data = {};
   if (room_no !== undefined) update_data.room_no = room_no;
   if (room_type !== undefined) update_data.room_type = String(room_type).toLowerCase();
+  if (input_pg_id !== undefined) update_data.pg_id = targetPgId;
   if (input_building_id !== undefined) update_data.building_id = targetBuildingId;
   if (input_floor_id !== undefined) update_data.floor_id = targetFloorId;
   if (input_branch_id !== undefined) update_data.branch_id = branch_id;
@@ -823,6 +826,7 @@ const formatRoomShift = (row) => {
   return {
     id: Number(row.id),
     pg_id: Number(row.pg_id),
+    pg_name: row.pg_name || null,
     branch_id: Number(row.branch_id),
     branch_name: row.branch_name || null,
     stay_id: row.stay_id ? Number(row.stay_id) : null,
@@ -872,6 +876,7 @@ const baseShiftQuery = () => {
   return db('room_shift_requests')
     .whereNull('room_shift_requests.deleted_at')
     .join('users as resident', 'room_shift_requests.resident_id', 'resident.id')
+    .join('pgs', 'room_shift_requests.pg_id', 'pgs.id')
     .join('branches', 'room_shift_requests.branch_id', 'branches.id')
     .join('rooms as current_room', 'room_shift_requests.current_room_id', 'current_room.id')
     .leftJoin('buildings as current_bld', 'current_room.building_id', 'current_bld.id')
@@ -882,6 +887,7 @@ const baseShiftQuery = () => {
     .leftJoin('users as reviewer', 'room_shift_requests.reviewed_by', 'reviewer.id')
     .select(
       'room_shift_requests.*',
+      'pgs.name as pg_name',
       'branches.name as branch_name',
       'resident.name as resident_name',
       'resident.email as resident_email',
@@ -1094,6 +1100,13 @@ export const findAllShifts = async (user, query = {}) => {
 
   if (user.role === ROLES.RESIDENT) {
     base.where('room_shift_requests.resident_id', user.id);
+  } else if (user.role === ROLES.SUPER_ADMIN) {
+    if (query.pg_id && query.pg_id !== 'all') {
+      base.where('room_shift_requests.pg_id', Number(query.pg_id));
+    }
+    if (query.branch_id && query.branch_id !== 'all') {
+      base.where('room_shift_requests.branch_id', Number(query.branch_id));
+    }
   } else {
     const adminPg = await resolveAdminPg(user);
     base.where('room_shift_requests.pg_id', adminPg.id);
@@ -1173,12 +1186,19 @@ export const findShiftById = async (id, user) => {
  * @returns {Promise<Object>} Aggregated KPI counts
  */
 export const getShiftStats = async (user, query = {}) => {
-  const adminPg = await resolveAdminPg(user);
+  const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+  const adminPg = isSuperAdmin ? null : await resolveAdminPg(user);
+  const targetPgId = isSuperAdmin
+    ? (query.pg_id && query.pg_id !== 'all' ? Number(query.pg_id) : null)
+    : adminPg.id;
   let branchId = query.branch_id && query.branch_id !== 'all' ? Number(query.branch_id) : null;
 
   const qb = db('room_shift_requests')
-    .where('room_shift_requests.pg_id', adminPg.id)
     .whereNull('room_shift_requests.deleted_at');
+
+  if (targetPgId) {
+    qb.where('room_shift_requests.pg_id', targetPgId);
+  }
 
   if (branchId) {
     qb.where('room_shift_requests.branch_id', branchId);
@@ -1192,7 +1212,7 @@ export const getShiftStats = async (user, query = {}) => {
   );
 
   return {
-    pg_id: adminPg.id,
+    pg_id: targetPgId,
     branch_id: branchId,
     total_requests: Number(row?.total_requests || 0),
     total: Number(row?.total_requests || 0),

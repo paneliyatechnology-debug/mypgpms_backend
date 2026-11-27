@@ -51,14 +51,14 @@ export const registerOwnerWithPgValidator = [
     }),
 
   body('gender')
-    .optional()
+    .optional({ checkFalsy: true })
     .trim()
     .toLowerCase()
     .isIn(['male', 'female', 'other'])
     .withMessage('Gender must be one of: male, female, other'),
 
   body('address')
-    .optional()
+    .optional({ checkFalsy: true })
     .trim(),
 
   // PG Facility Details
@@ -70,14 +70,14 @@ export const registerOwnerWithPgValidator = [
     .withMessage('PG name must be between 2 and 150 characters'),
 
   body('pg_type')
-    .optional()
+    .optional({ checkFalsy: true })
     .trim()
     .toLowerCase()
     .isIn(['boys', 'girls', 'coed', 'other'])
     .withMessage('PG type must be one of: boys, girls, coed, other'),
 
   body('pg_phone')
-    .optional()
+    .optional({ checkFalsy: true })
     .trim()
     .matches(/^(\+91[\-\s]?)?[6-9]\d{9}$/)
     .withMessage('Please provide a valid 10-digit PG contact phone number'),
@@ -364,9 +364,9 @@ export const updateOwnerWithPgValidator = [
         req.body.status = null;
         return true;
       }
-      return ['active', 'inactive', 'under_maintenance'].includes(String(val).toLowerCase());
+      return ['active', 'inactive', 'under_review', 'suspended', 'under_maintenance'].includes(String(val).toLowerCase());
     })
-    .withMessage('PG status must be one of: active, inactive, under_maintenance'),
+    .withMessage('PG status must be one of: active, inactive, under_review, suspended, under_maintenance'),
 
   body('profile_photo')
     .optional()

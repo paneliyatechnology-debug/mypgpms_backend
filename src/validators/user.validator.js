@@ -364,6 +364,12 @@ export const updateUserValidator = [
     .isIn(ALLOWED_STATUSES)
     .withMessage(`Status must be one of: ${ALLOWED_STATUSES.join(', ')}`),
 
+  body('password')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long'),
+
   body('address')
     .optional({ checkFalsy: true })
     .trim(),
@@ -616,6 +622,16 @@ export const updateProfileValidator = [
   body('occupation')
     .optional({ checkFalsy: true })
     .trim(),
+
+  body('current_password')
+    .optional({ checkFalsy: true })
+    .isString(),
+
+  body('password')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long'),
 ];
 
 /**

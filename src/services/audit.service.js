@@ -318,6 +318,8 @@ class AuditService {
       // Directly accessible column fields matching table columns in UI
       user: userName,
       user_name: userName,
+      user_email: item.actor_email || item.user_email || null,
+      role: item.user_role || item.actor_role || 'system',
       action: actionLabel,
       action_code: rawAction,
       module: moduleLabel,
@@ -465,6 +467,7 @@ class AuditService {
           'branches.name as branch_name',
           'pgs.name as pg_name',
           'actor.name as actor_name',
+          'actor.email as actor_email',
           'actor.role as actor_role',
           'actor.profile_photo as user_profile_photo'
         )
@@ -526,6 +529,7 @@ class AuditService {
         'branches.name as branch_name',
         'pgs.name as pg_name',
         'actor.name as actor_name',
+        'actor.email as actor_email',
         'actor.role as actor_role',
         'actor.profile_photo as user_profile_photo'
       )
@@ -628,6 +632,31 @@ class AuditService {
       }));
     }
 
+    // 4b. Distinct actors for Users filter dropdown
+    const actorRows = await base.clone()
+      .leftJoin('users as actor', 'audit_logs.user_id', 'actor.id')
+      .select(
+        'audit_logs.user_id',
+        db.raw('COALESCE(actor.name, audit_logs.user_name, "System") as name')
+      )
+      .groupBy('audit_logs.user_id', 'actor.name', 'audit_logs.user_name')
+      .orderBy('name', 'asc');
+
+    const seenActorKeys = new Set();
+    const actorsList = [];
+    actorRows.forEach((row) => {
+      const displayName = String(row.name || 'System').trim();
+      const val = row.user_id ? String(row.user_id) : displayName;
+      if (!seenActorKeys.has(val)) {
+        seenActorKeys.add(val);
+        actorsList.push({
+          id: row.user_id ? Number(row.user_id) : null,
+          value: val,
+          name: displayName,
+        });
+      }
+    });
+
     // 5. Recent 5 activities
     const recentItems = await base.clone()
       .leftJoin('branches', 'audit_logs.branch_id', 'branches.id')
@@ -638,11 +667,17 @@ class AuditService {
         'branches.name as branch_name',
         'pgs.name as pg_name',
         'actor.name as actor_name',
+        'actor.email as actor_email',
         'actor.role as actor_role',
         'actor.profile_photo as user_profile_photo'
       )
       .orderBy('audit_logs.created_at', 'desc')
       .limit(5);
+
+    const topRawModule = moduleCounts[0]?.module ? String(moduleCounts[0].module).toUpperCase() : null;
+    const top_active_module = topRawModule
+      ? (MODULE_DISPLAY_MAP[topRawModule] || (topRawModule.charAt(0) + topRawModule.slice(1).toLowerCase()))
+      : null;
 
     return {
       // 4 Main KPI Cards shown on the UI:
@@ -650,6 +685,7 @@ class AuditService {
       today: today,
       last_7_days: last7Days,
       last_30_days: last30Days,
+      top_active_module,
 
       // Universal aliases for frontend consumption
       total: total,
@@ -664,6 +700,7 @@ class AuditService {
       modules: modulesBreakdown,
       actions: actionsBreakdown,
       branches: branchBreakdown,
+      users: actorsList,
       recent: recentItems.map((r, idx) => this.formatAuditItem(r, idx, 1, 5)),
     };
   };
@@ -845,6 +882,7 @@ class AuditService {
       format: 'xlsx',
       download_url,
       file_url: download_url,
+      file_path: `uploads/audits/${filename}`,
       filename,
       total_records: rows.length,
     };
@@ -1097,6 +1135,7 @@ class AuditService {
       format: 'pdf',
       download_url: file_url,
       file_url,
+      file_path: `uploads/audits/${filename}`,
       filename,
       total_records: rows.length,
     };

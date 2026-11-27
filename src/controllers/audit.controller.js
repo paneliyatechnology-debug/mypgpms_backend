@@ -1,3 +1,4 @@
+import path from 'path';
 import auditService from '../services/audit.service.js';
 import { success } from '../utils/apiResponse.js';
 import { HTTP_STATUS } from '../constants/index.js';
@@ -35,6 +36,19 @@ class AuditController {
         result = await auditService.exportAuditsPdf(req.user, req.query);
       } else {
         result = await auditService.exportAuditsExcel(req.user, req.query);
+      }
+
+      const isStream = req.query.download === 'true' || req.query.stream === 'true';
+      if (isStream && result?.file_path) {
+        const fullPath = path.isAbsolute(result.file_path)
+          ? result.file_path
+          : path.join(process.cwd(), result.file_path);
+        const contentType = format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+        return res.sendFile(fullPath);
       }
 
       const message = format === 'pdf'

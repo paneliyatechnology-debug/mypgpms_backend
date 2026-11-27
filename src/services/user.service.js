@@ -1,7 +1,7 @@
 import moment from 'moment';
 import db from '../config/db.js';
 import config from '../config/index.js';
-import { hashPassword, generateSecurePassword } from '../utils/password.js';
+import { hashPassword, comparePassword, generateSecurePassword } from '../utils/password.js';
 import emailService from './email.service.js';
 import auditService from './audit.service.js';
 import socketService, { SOCKET_EVENTS } from './socket.service.js';
@@ -403,8 +403,23 @@ const formatUserListItem = (user) => {
     email: user.email || null,
     phone: user.phone || null,
     gender: user.gender || null,
+    address: user.address || null,
+    city: user.city || null,
+    state: user.state || null,
+    pincode: user.pincode || null,
     status: user.status || 'active',
     profile_photo_url: buildFileUrl('users', user.profile_photo),
+    pg: user.owned_pg_id
+      ? {
+          id: Number(user.owned_pg_id),
+          name: user.owned_pg_name,
+          type: user.owned_pg_type,
+          status: user.owned_pg_status,
+          city: user.owned_pg_city || null,
+          total_rooms: Number(user.owned_pg_total_rooms) || 0,
+          total_beds: Number(user.owned_pg_total_beds) || 0,
+        }
+      : null,
     agreement_file: user.agreement_file || null,
     agreement_file_url: buildFileUrl('documents', user.agreement_file),
     room_no: user.room_no || null,
@@ -419,6 +434,8 @@ const formatUserListItem = (user) => {
     updated_at: user.updated_at || null,
     deleted_at: user.deleted_at || null,
     role: user.role || ROLES.RESIDENT,
+    pg_id: (user.stay_pg_id || user.user_pg_id) ? Number(user.stay_pg_id || user.user_pg_id) : null,
+    pg_name: user.stay_pg_name || null,
     branch_id: user.branch_id ? Number(user.branch_id) : null,
     branch_name: user.branch_name || null,
     building_id: user.building_id ? Number(user.building_id) : null,
@@ -446,6 +463,10 @@ class UserService {
     'users.email',
     'users.phone',
     'users.gender',
+    'users.address',
+    'users.city',
+    'users.state',
+    'users.pincode',
     'users.status',
     'users.role',
     'users.profile_photo',
@@ -453,6 +474,16 @@ class UserService {
     'users.created_at',
     'users.updated_at',
     'users.deleted_at',
+    'owned_pg.id as owned_pg_id',
+    'owned_pg.name as owned_pg_name',
+    'owned_pg.type as owned_pg_type',
+    'owned_pg.status as owned_pg_status',
+    'owned_pg.city as owned_pg_city',
+    'owned_pg.total_rooms as owned_pg_total_rooms',
+    'owned_pg.total_beds as owned_pg_total_beds',
+    'resident_pg_stays.pg_id as stay_pg_id',
+    'users.pg_id as user_pg_id',
+    'pgs.name as stay_pg_name',
     'resident_pg_stays.branch_id',
     'branches.name as branch_name',
     'resident_pg_stays.room_id',
@@ -722,8 +753,11 @@ class UserService {
       }
     }
 
-    // Always auto-generate a fresh, random secure password for newly created user
-    const plain_password = generateSecurePassword(10);
+    // Use supplied password when provided (e.g. Super Admin creating an Owner), otherwise auto-generate
+    const plain_password =
+      password && String(password).trim().length > 0
+        ? String(password).trim()
+        : generateSecurePassword(10);
     const hashed_password = await hashPassword(plain_password);
     const effective_check_in = check_in_date || moment().format('YYYY-MM-DD');
 
@@ -1047,6 +1081,11 @@ class UserService {
           .on('users.subscription_plan_id', '=', 'subscription_plans.id')
           .andOnNull('subscription_plans.deleted_at');
       })
+      .leftJoin('pgs as owned_pg', (join) => {
+        join
+          .on('users.id', '=', 'owned_pg.owner_id')
+          .andOnNull('owned_pg.deleted_at');
+      })
       .select(...UserService.listSelectFields);
 
     let count_query = db('users')
@@ -1217,7 +1256,20 @@ class UserService {
       deleteFn: deleteDocumentFile,
     });
 
+    let hashedNewPassword = null;
+    if (update_data.password && String(update_data.password).trim().length > 0) {
+      if (update_data.current_password) {
+        const rawUser = await db('users').where({ id }).whereNull('deleted_at').first();
+        const isCurrentValid = rawUser && (await comparePassword(String(update_data.current_password), rawUser.password));
+        if (!isCurrentValid) {
+          throw new AppError('Current password is incorrect', HTTP_STATUS.BAD_REQUEST);
+        }
+      }
+      hashedNewPassword = await hashPassword(String(update_data.password).trim());
+    }
+
     const allowed_updates = {
+      ...(hashedNewPassword && { password: hashedNewPassword }),
       ...(update_data.name !== undefined && update_data.name !== null && update_data.name !== '' && { name: update_data.name.trim() }),
       ...(update_data.email !== undefined && update_data.email !== null && update_data.email !== '' && { email: update_data.email.toLowerCase().trim() }),
       ...(update_data.phone !== undefined && update_data.phone !== null && update_data.phone !== '' && { phone: update_data.phone.trim() }),
@@ -1576,12 +1628,23 @@ class UserService {
     if (!userRecords.length) return [];
 
     const userIds = userRecords.map((u) => u.id);
-    const branchLinks = await db('user_branches')
-      .whereIn('user_branches.user_id', userIds)
-      .join('branches', 'user_branches.branch_id', 'branches.id')
-      .whereNull('branches.deleted_at')
-      .select('user_branches.user_id', 'branches.id as branch_id', 'branches.name as branch_name')
-      .orderBy('branches.name', 'asc');
+    const pgIds = [...new Set(userRecords.map((u) => u.pg_id).filter(Boolean))];
+    const [branchLinks, pgRows] = await Promise.all([
+      db('user_branches')
+        .whereIn('user_branches.user_id', userIds)
+        .join('branches', 'user_branches.branch_id', 'branches.id')
+        .whereNull('branches.deleted_at')
+        .select('user_branches.user_id', 'branches.id as branch_id', 'branches.name as branch_name')
+        .orderBy('branches.name', 'asc'),
+      pgIds.length
+        ? db('pgs').whereIn('id', pgIds).whereNull('deleted_at').select('id', 'name')
+        : Promise.resolve([]),
+    ]);
+
+    const pgNameMap = {};
+    pgRows.forEach((p) => {
+      pgNameMap[p.id] = p.name;
+    });
 
     const branchMap = {};
     branchLinks.forEach((link) => {
@@ -1598,6 +1661,8 @@ class UserService {
       const branches = branchMap[user.id] || [];
       return {
         id: user.id,
+        pg_id: user.pg_id ? Number(user.pg_id) : null,
+        pg_name: user.pg_id ? pgNameMap[user.pg_id] || null : null,
         name: user.name,
         role: user.staff_role || user.role,
         staff_role: user.staff_role || null,
@@ -1749,14 +1814,21 @@ class UserService {
    * @returns {Promise<object>} Aggregated staff counts and metrics
    */
   getStaffStats = async (user, query = {}) => {
-    const pg = await this.resolveAdminPg(user);
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+    const pg = isSuperAdmin ? null : await this.resolveAdminPg(user);
+    const targetPgId = isSuperAdmin
+      ? (query.pg_id && query.pg_id !== 'all' ? Number(query.pg_id) : null)
+      : pg.id;
 
     let base = db('users')
       .where('users.role', ROLES.STAFF)
-      .where('users.pg_id', pg.id)
       .whereNull('users.deleted_at');
 
-    if (query.branch_id) {
+    if (targetPgId) {
+      base = base.where('users.pg_id', targetPgId);
+    }
+
+    if (query.branch_id && query.branch_id !== 'all') {
       base = base.whereIn(
         'users.id',
         db('user_branches').where('branch_id', query.branch_id).select('user_id')
@@ -1791,8 +1863,8 @@ class UserService {
     const inactive = parseInt(counts?.inactive_staff || 0, 10);
 
     return {
-      pg_id: pg.id,
-      branch_id: query.branch_id ? Number(query.branch_id) : null,
+      pg_id: targetPgId,
+      branch_id: query.branch_id && query.branch_id !== 'all' ? Number(query.branch_id) : null,
       total_staff: total,
       total: total,
       active: active,
@@ -1835,6 +1907,13 @@ class UserService {
       }
       targetBranchId = stay.branch_id;
       targetPgId = stay.pg_id;
+    } else if (user.role === ROLES.SUPER_ADMIN) {
+      if (query.pg_id && query.pg_id !== 'all') {
+        targetPgId = Number(query.pg_id);
+      }
+      if (query.branch_id && query.branch_id !== 'all') {
+        targetBranchId = Number(query.branch_id);
+      }
     } else {
       const pg = await this.resolveAdminPg(user);
       targetPgId = pg.id;
@@ -1869,8 +1948,11 @@ class UserService {
 
     let base = db('users')
       .where('users.role', ROLES.STAFF)
-      .where('users.pg_id', targetPgId)
       .whereNull('users.deleted_at');
+
+    if (targetPgId) {
+      base = base.where('users.pg_id', targetPgId);
+    }
 
     if (targetBranchId) {
       base = base.whereIn(
@@ -1963,7 +2045,7 @@ class UserService {
    * @returns {Promise<object>} Created staff member record
    */
   createStaff = async (data, file = null, user) => {
-    const pg = await this.resolveAdminPg(user);
+    const pg = await this.resolveAdminPg(user, data.pg_id ? Number(data.pg_id) : null);
 
     const branchIds = data.branch_ids || [];
     if (!branchIds.length) {
@@ -2086,13 +2168,16 @@ class UserService {
    * 5. Get Staff Member Details by ID
    */
   getStaffById = async (id, user) => {
-    const pg = await this.resolveAdminPg(user);
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+    const pg = isSuperAdmin ? null : await this.resolveAdminPg(user);
 
-    const staff = await db('users')
+    const staffQuery = db('users')
       .where({ 'users.id': id, 'users.role': ROLES.STAFF })
-      .where('users.pg_id', pg.id)
-      .whereNull('users.deleted_at')
-      .first();
+      .whereNull('users.deleted_at');
+    if (!isSuperAdmin && pg) {
+      staffQuery.where('users.pg_id', pg.id);
+    }
+    const staff = await staffQuery.first();
 
     if (!staff) {
       throw new AppError('Staff member not found', HTTP_STATUS.NOT_FOUND);
@@ -2112,22 +2197,28 @@ class UserService {
    * @returns {Promise<object>} Updated staff entity
    */
   updateStaff = async (id, data, file = null, user) => {
-    const pg = await this.resolveAdminPg(user);
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+    const pg = isSuperAdmin ? null : await this.resolveAdminPg(user);
 
-    const staff = await db('users')
-      .where({ id, role: ROLES.STAFF, pg_id: pg.id })
-      .whereNull('deleted_at')
-      .first();
+    const staffQuery = db('users')
+      .where({ id, role: ROLES.STAFF })
+      .whereNull('deleted_at');
+    if (!isSuperAdmin && pg) {
+      staffQuery.where({ pg_id: pg.id });
+    }
+    const staff = await staffQuery.first();
 
     if (!staff) {
       throw new AppError('Staff member not found', HTTP_STATUS.NOT_FOUND);
     }
 
+    const effectivePgId = isSuperAdmin && data.pg_id ? Number(data.pg_id) : staff.pg_id;
+
     let branchIds = data.branch_ids;
     if (branchIds && branchIds.length) {
       const validBranches = await db('branches')
         .whereIn('id', branchIds)
-        .where('pg_id', pg.id)
+        .where('pg_id', effectivePgId)
         .whereNull('deleted_at')
         .select('id', 'name');
 
@@ -2212,17 +2303,23 @@ class UserService {
    * 7. Quick Update Staff Status (active | on_leave | inactive)
    */
   updateStaffStatus = async (id, status, user) => {
-    const pg = await this.resolveAdminPg(user);
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+    const pg = isSuperAdmin ? null : await this.resolveAdminPg(user);
     const normalizedStatus = status.toLowerCase();
 
-    const staff = await db('users')
-      .where({ id, role: ROLES.STAFF, pg_id: pg.id })
-      .whereNull('deleted_at')
-      .first();
+    const staffQuery = db('users')
+      .where({ id, role: ROLES.STAFF })
+      .whereNull('deleted_at');
+    if (!isSuperAdmin && pg) {
+      staffQuery.where({ pg_id: pg.id });
+    }
+    const staff = await staffQuery.first();
 
     if (!staff) {
       throw new AppError('Staff member not found', HTTP_STATUS.NOT_FOUND);
     }
+
+    const effectivePgId = pg ? pg.id : staff.pg_id;
 
     await db('users').where({ id }).update({
       status: normalizedStatus,
@@ -2230,7 +2327,7 @@ class UserService {
     });
 
     auditService.log({
-      pg_id: pg.id,
+      pg_id: effectivePgId,
       user_id: user?.id,
       user_name: user?.name,
       user_role: user?.role,
@@ -2244,7 +2341,7 @@ class UserService {
     });
 
     try {
-      socketService.emitStatsUpdated(pg.id, SOCKET_EVENTS.STAFF_STATS_UPDATED, { staff_id: id, status: normalizedStatus });
+      socketService.emitStatsUpdated(effectivePgId, SOCKET_EVENTS.STAFF_STATS_UPDATED, { staff_id: id, status: normalizedStatus });
     } catch (e) { }
 
     return {
@@ -2260,16 +2357,22 @@ class UserService {
    * 8. Soft Delete Staff Member
    */
   deleteStaff = async (id, user) => {
-    const pg = await this.resolveAdminPg(user);
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+    const pg = isSuperAdmin ? null : await this.resolveAdminPg(user);
 
-    const staff = await db('users')
-      .where({ id, role: ROLES.STAFF, pg_id: pg.id })
-      .whereNull('deleted_at')
-      .first();
+    const staffQuery = db('users')
+      .where({ id, role: ROLES.STAFF })
+      .whereNull('deleted_at');
+    if (!isSuperAdmin && pg) {
+      staffQuery.where({ pg_id: pg.id });
+    }
+    const staff = await staffQuery.first();
 
     if (!staff) {
       throw new AppError('Staff member not found', HTTP_STATUS.NOT_FOUND);
     }
+
+    const effectivePgId = pg ? pg.id : staff.pg_id;
 
     await db('users').where({ id }).update({
       status: 'inactive',
@@ -2278,7 +2381,7 @@ class UserService {
     });
 
     auditService.log({
-      pg_id: pg.id,
+      pg_id: effectivePgId,
       user_id: user?.id,
       user_name: user?.name,
       user_role: user?.role,
@@ -2291,7 +2394,7 @@ class UserService {
     });
 
     try {
-      socketService.emitStatsUpdated(pg.id, SOCKET_EVENTS.STAFF_STATS_UPDATED, { staff_id: id, deleted: true });
+      socketService.emitStatsUpdated(effectivePgId, SOCKET_EVENTS.STAFF_STATS_UPDATED, { staff_id: id, deleted: true });
     } catch (e) { }
 
     return {

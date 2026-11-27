@@ -10,6 +10,7 @@ import { hashPassword, comparePassword, generateSecurePassword } from '../utils/
 import { generateAuthTokens, verifyRefreshToken } from '../utils/jwt.js';
 import { AppError } from '../utils/apiResponse.js';
 import { normalizePhone } from '../utils/phone.js';
+import { deleteUserPhotoFile, deletePgLogoFile } from '../middlewares/upload.middleware.js';
 
 /**
  * Service managing user authentication, registration, OTP login,
@@ -211,17 +212,20 @@ class AuthService {
    * @returns {Promise<object>} Updated PG object
    */
   updateOwnerWithPg = async (currentUser, payload) => {
-    // 1. Identify which PG to update
-    let targetPgId = currentUser.pg_id || currentUser.pg?.id;
-    if (!targetPgId && currentUser.role === ROLES.ADMIN) {
-      const ownedPg = await db('pgs')
-        .where({ owner_id: currentUser.id })
-        .whereNull('deleted_at')
-        .orderBy('id', 'asc')
-        .first();
-      if (ownedPg) targetPgId = ownedPg.id;
-    } else if (currentUser.role === ROLES.SUPER_ADMIN && payload.pg_id) {
-      targetPgId = payload.pg_id;
+    // 1. Identify which PG to update (Super Admin can specify payload.pg_id directly)
+    let targetPgId = null;
+    if (currentUser.role === ROLES.SUPER_ADMIN && payload.pg_id) {
+      targetPgId = Number(payload.pg_id);
+    } else {
+      targetPgId = currentUser.pg_id || currentUser.pg?.id || null;
+      if (!targetPgId && currentUser.role === ROLES.ADMIN) {
+        const ownedPg = await db('pgs')
+          .where({ owner_id: currentUser.id })
+          .whereNull('deleted_at')
+          .orderBy('id', 'asc')
+          .first();
+        if (ownedPg) targetPgId = ownedPg.id;
+      }
     }
 
     if (!targetPgId) {
@@ -316,7 +320,12 @@ class AuthService {
         userUpdateFields.address = (owner_address === 'null' || !owner_address) ? null : owner_address;
       }
       if (payload.profile_photo !== undefined) {
-        userUpdateFields.profile_photo = (payload.profile_photo === 'null' || !payload.profile_photo) ? null : payload.profile_photo;
+        const nextPhoto = (payload.profile_photo === 'null' || !payload.profile_photo) ? null : payload.profile_photo;
+        const existingOwner = await trx('users').where({ id: owner_id }).select('profile_photo').first();
+        if (existingOwner?.profile_photo && existingOwner.profile_photo !== nextPhoto) {
+          deleteUserPhotoFile(existingOwner.profile_photo);
+        }
+        userUpdateFields.profile_photo = nextPhoto;
       }
 
       if (Object.keys(userUpdateFields).length > 0) {
@@ -367,7 +376,11 @@ class AuthService {
         pgUpdateData.status = (payload.status === 'null' || !payload.status) ? null : payload.status;
       }
       if (payload.logo !== undefined) {
-        pgUpdateData.logo = (payload.logo === 'null' || !payload.logo) ? null : payload.logo;
+        const nextLogo = (payload.logo === 'null' || !payload.logo) ? null : payload.logo;
+        if (existingPg.logo && existingPg.logo !== nextLogo) {
+          deletePgLogoFile(existingPg.logo);
+        }
+        pgUpdateData.logo = nextLogo;
       }
       if (payload.pg_upi_id !== undefined) {
         pgUpdateData.pg_upi_id = (payload.pg_upi_id === 'null' || !payload.pg_upi_id) ? null : payload.pg_upi_id;

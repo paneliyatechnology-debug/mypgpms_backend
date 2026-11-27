@@ -20,7 +20,21 @@ export const getDashboard = async (req, res, next) => {
   }
 };
 
+/**
+ * Controller for Platform-Wide Super Admin Dashboard Overview
+ * @route GET /api/v1/dashboard/superadmin
+ */
+export const getSuperAdminDashboard = async (req, res, next) => {
+  try {
+    const data = await dashboardService.getSuperAdminDashboard(req.query);
+    return success(res, 'Super Admin platform dashboard retrieved successfully', data, HTTP_STATUS.OK);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export default {
   getDashboard,
+  getSuperAdminDashboard,
 };
 

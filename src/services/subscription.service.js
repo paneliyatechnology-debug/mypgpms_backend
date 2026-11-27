@@ -59,7 +59,7 @@ class SubscriptionService {
 
     const query = db('subscription_plans')
       .whereNull('subscription_plans.deleted_at')
-      .join('pgs', (join) => {
+      .leftJoin('pgs', (join) => {
         join.on('subscription_plans.pg_id', '=', 'pgs.id').andOnNull('pgs.deleted_at');
       })
       .modify((qb) => {
@@ -71,14 +71,28 @@ class SubscriptionService {
       db.raw('COUNT(subscription_plans.id) as total_plans'),
       db.raw('COALESCE(SUM(subscription_plans.subscribers_count), 0) as total_subscribers'),
       db.raw('COALESCE(SUM(CASE WHEN subscription_plans.is_active = 1 THEN 1 ELSE 0 END), 0) as active_plans'),
-      db.raw('COALESCE(SUM(CASE WHEN subscription_plans.is_active = 0 THEN 1 ELSE 0 END), 0) as inactive_plans')
+      db.raw('COALESCE(SUM(CASE WHEN subscription_plans.is_active = 0 THEN 1 ELSE 0 END), 0) as inactive_plans'),
+      db.raw(`COALESCE(SUM(
+        CASE WHEN subscription_plans.is_active = 1 THEN
+          CASE
+            WHEN subscription_plans.plan_type = 'yearly' THEN (subscription_plans.price / 12) * subscription_plans.subscribers_count
+            WHEN subscription_plans.plan_type = 'quarterly' THEN (subscription_plans.price / 3) * subscription_plans.subscribers_count
+            ELSE subscription_plans.price * subscription_plans.subscribers_count
+          END
+        ELSE 0 END
+      ), 0) as monthly_recurring_revenue`)
     );
+
+    const active_plans = parseInt(stats?.active_plans, 10) || 0;
+    const inactive_plans = parseInt(stats?.inactive_plans, 10) || 0;
 
     return {
       total_plans: parseInt(stats?.total_plans, 10) || 0,
       total_subscribers: parseInt(stats?.total_subscribers, 10) || 0,
-      active_plans: parseInt(stats?.active_plans, 10) || 0,
-      inactive_plans: parseInt(stats?.inactive_plans, 10) || 0,
+      active_plans,
+      inactive_plans,
+      paused_plans: inactive_plans,
+      monthly_recurring_revenue: Math.round((parseFloat(stats?.monthly_recurring_revenue) || 0) * 100) / 100,
     };
   };
 
@@ -106,7 +120,7 @@ class SubscriptionService {
 
     const base_query = db('subscription_plans')
       .whereNull('subscription_plans.deleted_at')
-      .join('pgs', (join) => {
+      .leftJoin('pgs', (join) => {
         join.on('subscription_plans.pg_id', '=', 'pgs.id').andOnNull('pgs.deleted_at');
       })
       .modify((qb) => {
@@ -175,7 +189,7 @@ class SubscriptionService {
     const query = db('subscription_plans')
       .where('subscription_plans.id', id)
       .whereNull('subscription_plans.deleted_at')
-      .join('pgs', (join) => {
+      .leftJoin('pgs', (join) => {
         join.on('subscription_plans.pg_id', '=', 'pgs.id').andOnNull('pgs.deleted_at');
       })
       .select(
@@ -203,7 +217,7 @@ class SubscriptionService {
    */
   create = async (data) => {
     const {
-      pg_id,
+      pg_id = null,
       name,
       plan_type,
       price,
@@ -214,23 +228,32 @@ class SubscriptionService {
       subscribers_count = 0,
     } = data;
 
-    // Verify parent PG exists and is active
-    const pg = await db('pgs').where({ id: pg_id }).whereNull('deleted_at').first();
-    if (!pg) {
-      throw new AppError('PG facility not found', HTTP_STATUS.NOT_FOUND);
+    const resolvedPgId = pg_id ? Number(pg_id) : null;
+
+    // Verify parent PG exists if scoped to a PG
+    if (resolvedPgId) {
+      const pg = await db('pgs').where({ id: resolvedPgId }).whereNull('deleted_at').first();
+      if (!pg) {
+        throw new AppError('PG facility not found', HTTP_STATUS.NOT_FOUND);
+      }
     }
 
     const cleanName = String(name).trim();
 
-    // Enforce unique plan name within the same PG property
-    const existing = await db('subscription_plans')
-      .where({ pg_id, name: cleanName })
-      .whereNull('deleted_at')
-      .first();
+    // Enforce unique plan name within the same PG property (or platform-wide when pg_id is null)
+    const existingQuery = db('subscription_plans')
+      .where({ name: cleanName })
+      .whereNull('deleted_at');
+    if (resolvedPgId) {
+      existingQuery.where({ pg_id: resolvedPgId });
+    } else {
+      existingQuery.whereNull('pg_id');
+    }
+    const existing = await existingQuery.first();
 
     if (existing) {
       throw new AppError(
-        `A subscription plan named '${cleanName}' already exists in this facility`,
+        `A subscription plan named '${cleanName}' already exists`,
         HTTP_STATUS.CONFLICT
       );
     }
@@ -239,9 +262,9 @@ class SubscriptionService {
     const activeValue = is_active === 1 || is_active === '1' || is_active === true ? 1 : 0;
 
     const [id] = await db('subscription_plans').insert({
-      pg_id: Number(pg_id),
+      pg_id: resolvedPgId,
       name: cleanName,
-      plan_type: String(plan_type).toLowerCase(),
+      plan_type: String(plan_type || 'monthly').toLowerCase(),
       price: parseFloat(price),
       duration: String(duration).trim(),
       description: description ? String(description).trim() : null,
@@ -252,9 +275,11 @@ class SubscriptionService {
       updated_at: db.fn.now(),
     });
 
-    try {
-      socketService.emitStatsUpdated(Number(pg_id), SOCKET_EVENTS.SUBSCRIPTION_STATS_UPDATED, { plan_id: id });
-    } catch (e) {}
+    if (resolvedPgId) {
+      try {
+        socketService.emitStatsUpdated(resolvedPgId, SOCKET_EVENTS.SUBSCRIPTION_STATS_UPDATED, { plan_id: id });
+      } catch (e) {}
+    }
 
     return this.findById(id);
   };
@@ -280,11 +305,16 @@ class SubscriptionService {
     if (data.name !== undefined) {
       const cleanName = String(data.name).trim();
       if (cleanName.toLowerCase() !== plan.name.toLowerCase()) {
-        const duplicate = await db('subscription_plans')
-          .where({ pg_id: plan.pg_id, name: cleanName })
+        const dupQuery = db('subscription_plans')
+          .where({ name: cleanName })
           .whereNull('deleted_at')
-          .whereNot({ id })
-          .first();
+          .whereNot({ id });
+        if (plan.pg_id) {
+          dupQuery.where({ pg_id: plan.pg_id });
+        } else {
+          dupQuery.whereNull('pg_id');
+        }
+        const duplicate = await dupQuery.first();
 
         if (duplicate) {
           throw new AppError(

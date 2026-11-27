@@ -83,9 +83,10 @@ export const getSubscriptionById = async (req, res, next) => {
  */
 export const createSubscription = async (req, res, next) => {
   try {
-    let pg_id = req.body.pg_id ? Number(req.body.pg_id) : req.pg_id;
+    const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+    const pg_id = req.body.pg_id ? Number(req.body.pg_id) : (req.pg_id || null);
 
-    if (!pg_id) {
+    if (!pg_id && !isSuperAdmin) {
       throw new AppError(
         'Property (PG ID) is required. Please provide pg_id or authenticate under an authorized PG account',
         HTTP_STATUS.BAD_REQUEST
@@ -97,7 +98,7 @@ export const createSubscription = async (req, res, next) => {
       pg_id,
     });
 
-    return successAction(res, 'Subscription plan created successfully', plan.id, HTTP_STATUS.CREATED);
+    return successAction(res, 'Subscription plan created successfully', plan.id, HTTP_STATUS.CREATED, plan);
   } catch (err) {
     next(err);
   }

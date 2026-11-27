@@ -728,6 +728,159 @@ class DashboardService {
   };
 
   /**
+   * Platform-wide Super Admin Dashboard Overview
+   * Aggregates metrics across all registered PGs, owners, residents, subscriptions, payments, and audits.
+   *
+   * @returns {Promise<Object>}
+   */
+  getSuperAdminDashboard = async (query = {}) => {
+    const targetPgId = query.pg_id && query.pg_id !== 'all' ? Number(query.pg_id) : null;
+
+    const [pgSummary] = await db('pgs')
+      .whereNull('deleted_at')
+      .modify((qb) => {
+        if (targetPgId) qb.where('id', targetPgId);
+      })
+      .select(
+        db.raw('COUNT(id) as total_pgs'),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END), 0) as active_pgs"),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'under_review' THEN 1 ELSE 0 END), 0) as pending_pgs"),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END), 0) as suspended_pgs"),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END), 0) as inactive_pgs"),
+        db.raw('COALESCE(SUM(total_rooms), 0) as total_rooms'),
+        db.raw('COALESCE(SUM(total_beds), 0) as total_beds')
+      );
+
+    const [ownerRow] = await db('users')
+      .where({ role: ROLES.ADMIN })
+      .whereNull('deleted_at')
+      .modify((qb) => {
+        if (targetPgId) {
+          qb.whereIn('id', db('pgs').select('owner_id').where('id', targetPgId).whereNull('deleted_at'));
+        }
+      })
+      .count('id as total_owners');
+
+    const [residentRow] = await db('resident_pg_stays')
+      .where({ status: 'active' })
+      .whereNull('deleted_at')
+      .modify((qb) => {
+        if (targetPgId) qb.where('pg_id', targetPgId);
+      })
+      .count('id as total_residents');
+
+    const [subRow] = await db('subscription_plans')
+      .whereNull('deleted_at')
+      .select(db.raw('COALESCE(SUM(subscribers_count), 0) as active_subscriptions'));
+
+    const [paymentSummary] = await db('payments')
+      .whereNull('deleted_at')
+      .modify((qb) => {
+        if (targetPgId) qb.where('pg_id', targetPgId);
+      })
+      .select(
+        db.raw('COALESCE(SUM(amount), 0) as total_billed'),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'paid' THEN CASE WHEN paid_amount > 0 THEN paid_amount ELSE amount END ELSE 0 END), 0) as total_collected")
+      );
+
+    const currentMonthStart = moment().startOf('month').format('YYYY-MM-DD HH:mm:ss');
+    const lastMonthStart = moment().subtract(1, 'month').startOf('month').format('YYYY-MM-DD HH:mm:ss');
+    const lastMonthEnd = moment().subtract(1, 'month').endOf('month').format('YYYY-MM-DD HH:mm:ss');
+
+    const [currMonthPay] = await db('payments')
+      .whereNull('deleted_at')
+      .modify((qb) => {
+        if (targetPgId) qb.where('pg_id', targetPgId);
+      })
+      .where('created_at', '>=', currentMonthStart)
+      .select(db.raw('COALESCE(SUM(amount), 0) as total'));
+
+    const [prevMonthPay] = await db('payments')
+      .whereNull('deleted_at')
+      .modify((qb) => {
+        if (targetPgId) qb.where('pg_id', targetPgId);
+      })
+      .where('created_at', '>=', lastMonthStart)
+      .where('created_at', '<=', lastMonthEnd)
+      .select(db.raw('COALESCE(SUM(amount), 0) as total'));
+
+    const revTrend = this.calculateTrend(currMonthPay?.total || 0, prevMonthPay?.total || 0);
+
+    // Last 6 months financial trajectory
+    const revenueTrends = [];
+    for (let i = 5; i >= 0; i--) {
+      const m = moment().subtract(i, 'months');
+      const mStart = m.clone().startOf('month').format('YYYY-MM-DD HH:mm:ss');
+      const mEnd = m.clone().endOf('month').format('YYYY-MM-DD HH:mm:ss');
+
+      const [mRow] = await db('payments')
+        .whereNull('deleted_at')
+        .modify((qb) => {
+          if (targetPgId) qb.where('pg_id', targetPgId);
+        })
+        .where('created_at', '>=', mStart)
+        .where('created_at', '<=', mEnd)
+        .select(
+          db.raw('COALESCE(SUM(amount), 0) as revenue'),
+          db.raw("COALESCE(SUM(CASE WHEN status = 'paid' THEN CASE WHEN paid_amount > 0 THEN paid_amount ELSE amount END ELSE 0 END), 0) as payouts")
+        );
+
+      revenueTrends.push({
+        month: m.format('MMM'),
+        revenue: parseFloat(mRow?.revenue || 0),
+        payouts: parseFloat(mRow?.payouts || 0),
+      });
+    }
+
+    // PG Type Distribution
+    const typeRows = await db('pgs')
+      .whereNull('deleted_at')
+      .modify((qb) => {
+        if (targetPgId) qb.where('id', targetPgId);
+      })
+      .select('type')
+      .count('id as count')
+      .groupBy('type');
+
+    const pgDistribution = { coed: 0, boys: 0, girls: 0, other: 0 };
+    typeRows.forEach((r) => {
+      const k = String(r.type || '').toLowerCase();
+      if (k in pgDistribution) {
+        pgDistribution[k] = Number(r.count) || 0;
+      } else {
+        pgDistribution.other += Number(r.count) || 0;
+      }
+    });
+
+    const totalRooms = Number(pgSummary?.total_rooms) || 0;
+    const totalBeds = Number(pgSummary?.total_beds) || 0;
+    const totalResidents = Number(residentRow?.total_residents) || 0;
+    const occupancyRate = totalBeds > 0 ? Math.min(100, Math.round((totalResidents / totalBeds) * 100)) : 0;
+
+    return {
+      role: 'super_admin',
+      stats: {
+        total_pgs: Number(pgSummary?.total_pgs) || 0,
+        active_pgs: Number(pgSummary?.active_pgs) || 0,
+        pending_pgs: Number(pgSummary?.pending_pgs) || 0,
+        suspended_pgs: Number(pgSummary?.suspended_pgs) || 0,
+        inactive_pgs: Number(pgSummary?.inactive_pgs) || 0,
+        total_owners: Number(ownerRow?.total_owners) || 0,
+        total_residents: totalResidents,
+        total_revenue: parseFloat(paymentSummary?.total_collected || 0) || parseFloat(paymentSummary?.total_billed || 0),
+        revenue_growth_percentage: revTrend.change_percentage,
+        revenue_trend: revTrend.trend,
+        active_subscriptions: Number(subRow?.active_subscriptions) || 0,
+        total_rooms: totalRooms,
+        total_beds: totalBeds,
+        overall_occupancy_rate: occupancyRate,
+      },
+      revenueTrends,
+      pgDistribution,
+    };
+  };
+
+  /**
    * Unified Dashboard Dispatcher
    * Automatically resolves and returns either Admin Operations Dashboard or Resident Dashboard based on token role.
    *

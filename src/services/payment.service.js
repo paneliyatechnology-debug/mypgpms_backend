@@ -395,7 +395,7 @@ class PaymentService {
     const totalDue = Math.max(0, totalAmount - totalPaid);
     const collectionRate = totalAmount > 0 ? Math.round((totalPaid / totalAmount) * 100) : 0;
 
-    const branchName = options.pg_name || payments[0]?.branch_name || payments[0]?.pg_name || 'HouseNest PG Facility';
+    const branchName = options.pg_name || payments[0]?.branch_name || payments[0]?.pg_name || 'MYPGPMS PG Facility';
     const residentFilterName = options.resident_id && payments[0]?.resident?.name ? payments[0].resident.name : null;
 
     const workbook = new ExcelJS.Workbook();
@@ -720,7 +720,7 @@ class PaymentService {
     const totalDue = Math.max(0, totalBilled - totalCollected);
     const collectionRate = totalBilled > 0 ? Math.round((totalCollected / totalBilled) * 100) : 0;
 
-    const branchName = options.pg_name || payments[0]?.branch_name || payments[0]?.pg_name || 'HouseNest PG Facility';
+    const branchName = options.pg_name || payments[0]?.branch_name || payments[0]?.pg_name || 'MYPGPMS PG Facility';
     const residentFilterName = options.resident_id && payments[0]?.resident?.name ? payments[0].resident.name : null;
 
     const doc = new PDFDocument({
@@ -852,7 +852,6 @@ class PaymentService {
 
         return cardY + cardH + 10;
       } else {
-        doc.fillColor(brandTeal).font(fontBold).fontSize(8).text(`${branchName} — Payments Ledger (Continued)`, startX, 12, { lineBreak: false });
         return 24;
       }
     };
@@ -1285,7 +1284,7 @@ class PaymentService {
     const formatIST = (d) => d ? moment(d).format('DD MMM YYYY, hh:mm A') : '-';
     const formatShortDate = (d) => d ? moment(d).format('DD MMM YYYY') : '-';
 
-    const pgName = pg?.name || payment.pg_name || 'HouseNest PG Facility';
+    const pgName = pg?.name || payment.pg_name || 'MYPGPMS PG Facility';
     const branchName = branch?.name || (payment.branch_name && payment.branch_name !== pgName ? payment.branch_name : 'Bodakdev Branch');
     const addressLine = [pg?.address, pg?.city, pg?.state, pg?.pincode ? `- ${pg.pincode}` : ''].filter(Boolean).join(', ') || 'Plot 45, Near St. Xavier College, Ahmedabad, Gujarat - 380009';
     const contactLine = [
@@ -1919,13 +1918,13 @@ class PaymentService {
     }
 
     const pg = await db('pgs').where({ id: payment.pg_id }).first();
-    const payee_name = pg?.pg_account_holder_name || pg?.name || 'HouseNest Living';
+    const payee_name = pg?.pg_account_holder_name || pg?.name || 'MYPGPMS Living';
     // Use the registered UPI ID of this PG facility so resident directly sends amount into that PG account
     const payee_upi = pg?.pg_upi_id || 'jasminkorat204@oksbi';
 
     // Standard NPCI UPI URI Scheme encoded into the QR code image
     const amount = Number(payment.amount).toFixed(2);
-    const cleanPayeeName = payee_name.replace(/[^\w\s]/gi, '').trim() || 'HouseNest Living';
+    const cleanPayeeName = payee_name.replace(/[^\w\s]/gi, '').trim() || 'MYPGPMS Living';
     const note = `Rent Payment ${payment.id}`;
     const upi_qr_string = `upi://pay?pa=${encodeURIComponent(payee_upi)}&pn=${encodeURIComponent(cleanPayeeName)}&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
 

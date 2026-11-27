@@ -17,17 +17,20 @@ export const registerOwnerWithPg = async (req, res, next) => {
   try {
     const result = await authService.registerOwnerWithPg(req.body);
 
-    // Set secure HTTP-only cookies
-    res.cookie('access_token', result.access_token, getCookieOptions(ACCESS_TOKEN_MAX_AGE));
-    res.cookie('refresh_token', result.refresh_token, getCookieOptions(REFRESH_TOKEN_MAX_AGE));
+    // Only set HTTP-only session cookies for public self-registration,
+    // never overwrite an authenticated Super Admin's session cookies.
+    if (!req.headers.authorization) {
+      res.cookie('access_token', result.access_token, getCookieOptions(ACCESS_TOKEN_MAX_AGE));
+      res.cookie('refresh_token', result.refresh_token, getCookieOptions(REFRESH_TOKEN_MAX_AGE));
+    }
 
     // Non-blocking audit log
     auditService.log({
       pg_id: result.pg_id,
       branch_id: result.branch_id,
-      user_id: result.owner_id,
-      user_name: req.body.name,
-      user_role: ROLES.ADMIN,
+      user_id: req.user?.id || result.owner_id,
+      user_name: req.user?.name || req.body.name,
+      user_role: req.user?.role || ROLES.ADMIN,
       module: AUDIT_MODULES.AUTH,
       action: AUDIT_ACTIONS.CREATE,
       entity_type: 'pg_owner',
@@ -36,7 +39,13 @@ export const registerOwnerWithPg = async (req, res, next) => {
       req,
     });
 
-    return successAction(res, 'PG Owner and PG registered successfully', result.owner_id, HTTP_STATUS.CREATED);
+    return successAction(
+      res,
+      'PG Owner and PG registered successfully',
+      result.pg_id,
+      HTTP_STATUS.CREATED,
+      { owner_id: result.owner_id, pg_id: result.pg_id, branch_id: result.branch_id }
+    );
   } catch (err) {
     next(err);
   }

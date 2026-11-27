@@ -370,6 +370,7 @@ class ComplaintService {
       status,
       category_id,
       category,
+      pg_id,
       branch_id,
       search,
       start_date,
@@ -382,8 +383,9 @@ class ComplaintService {
     const per_page = Math.max(1, parseInt(limit, 10) || 20);
     const offset = (current_page - 1) * per_page;
 
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
     let branchContext = null;
-    if (user.role === ROLES.ADMIN || user.role === ROLES.SUPER_ADMIN) {
+    if (user.role === ROLES.ADMIN) {
       branchContext = await this.resolveBranchContext(user, branch_id);
     }
 
@@ -394,12 +396,20 @@ class ComplaintService {
       .leftJoin('floors', 'rooms.floor_id', 'floors.id')
       .leftJoin('buildings', 'rooms.building_id', 'buildings.id')
       .join('branches', 'complaints.branch_id', 'branches.id')
+      .leftJoin('pgs', 'complaints.pg_id', 'pgs.id')
       .join('users as resident', 'complaints.resident_id', 'resident.id')
       .leftJoin('users as staff', 'complaints.assigned_to', 'staff.id')
       .modify((qb) => {
         // Scoping
         if (user.role === ROLES.RESIDENT) {
           qb.where('complaints.resident_id', user.id);
+        } else if (isSuperAdmin) {
+          if (pg_id && pg_id !== 'all') {
+            qb.where('complaints.pg_id', Number(pg_id));
+          }
+          if (branch_id && branch_id !== 'all') {
+            qb.where('complaints.branch_id', Number(branch_id));
+          }
         } else if (branchContext) {
           qb.where('complaints.branch_id', branchContext.branch_id);
         }
@@ -453,6 +463,7 @@ class ComplaintService {
         'floors.floor_number',
         'buildings.name as building_name',
         'branches.name as branch_name',
+        'pgs.name as pg_name',
         'resident.name as resident_name',
         'resident.phone as resident_phone',
         'staff.name as assigned_to_name',
@@ -498,6 +509,8 @@ class ComplaintService {
         icon: r.category_icon,
       },
       location: {
+        pg_id: r.pg_id || null,
+        pg_name: r.pg_name || null,
         room_id: r.room_id,
         room_no: r.room_no,
         floor_number: r.floor_number || null,
@@ -684,11 +697,21 @@ class ComplaintService {
    * 5. Get Complaint Dashboard KPI Statistics (Admin)
    */
   getComplaintStats = async (user, query = {}) => {
-    const branchContext = await this.resolveBranchContext(user, query.branch_id);
+    const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+    let branchContext = null;
+    const base = db('complaints').whereNull('complaints.deleted_at');
 
-    const base = db('complaints')
-      .where('complaints.branch_id', branchContext.branch_id)
-      .whereNull('complaints.deleted_at');
+    if (isSuperAdmin) {
+      if (query.pg_id && query.pg_id !== 'all') {
+        base.where('complaints.pg_id', Number(query.pg_id));
+      }
+      if (query.branch_id && query.branch_id !== 'all') {
+        base.where('complaints.branch_id', Number(query.branch_id));
+      }
+    } else {
+      branchContext = await this.resolveBranchContext(user, query.branch_id);
+      base.where('complaints.branch_id', branchContext.branch_id);
+    }
 
     // Aggregate counts
     const counts = await base.clone()
@@ -708,8 +731,8 @@ class ComplaintService {
     const overdueCount = parseInt(counts?.overdue_complaints || 0, 10);
 
     return {
-      branch_id: branchContext.branch_id,
-      branch_name: branchContext.branch_name,
+      branch_id: branchContext?.branch_id || (query.branch_id && query.branch_id !== 'all' ? Number(query.branch_id) : null),
+      branch_name: branchContext?.branch_name || null,
       total: totalCount,
       total_complaints: totalCount,
       pending: pendingCount,
