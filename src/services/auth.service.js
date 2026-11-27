@@ -404,6 +404,38 @@ class AuthService {
 
 
   /**
+   * Helper: Check if the PG associated with a user is active.
+   * Throws a 401 AppError with a clear message if the PG is not active.
+   * Skipped for `super_admin` (platform-level) and `resident` (should still access their data).
+   * @param {object} user
+   * @param {number|null} pg_id
+   */
+  checkPgStatus = async (user, pg_id) => {
+    if (!user) return;
+    if (user.role === ROLES.SUPER_ADMIN) return;
+    if (user.role === ROLES.RESIDENT) return;
+    if (!pg_id) return;
+
+    const pg = await db('pgs').where({ id: pg_id }).whereNull('deleted_at').first();
+    if (!pg) return;
+
+    if (pg.status !== 'active') {
+      const statusMessages = {
+        under_review:
+          'Your PG facility is currently under review by the MYPGPMS platform administrator. Login is temporarily restricted. Please contact support.',
+        suspended:
+          'Your PG facility has been suspended by the platform administrator. Please contact MYPGPMS support to resolve this before logging in.',
+        inactive:
+          'Your PG facility is marked as inactive. Please contact MYPGPMS support to reactivate it.',
+      };
+      throw new AppError(
+        statusMessages[pg.status] || 'Your PG facility is not active. Access is restricted.',
+        HTTP_STATUS.UNAUTHORIZED
+      );
+    }
+  };
+
+  /**
    * Authenticate user by email & password
    * @param {object} credentials
    * @returns {Promise<{ user: object, access_token: string, refresh_token: string }>}
@@ -425,6 +457,7 @@ class AuthService {
 
     const { password: _, ...user_without_password } = user;
     const pg_id = await this.getUserPgId(user);
+    await this.checkPgStatus(user, pg_id);
 
     const tokens = generateAuthTokens({
       id: user.id,
@@ -501,6 +534,7 @@ class AuthService {
 
     const { password: _, ...user_without_password } = user;
     const pg_id = await this.getUserPgId(user);
+    await this.checkPgStatus(user, pg_id);
 
     const tokens = generateAuthTokens({
       id: user.id,
@@ -625,6 +659,7 @@ class AuthService {
     }
 
     const pg_id = await this.getUserPgId(user);
+    await this.checkPgStatus(user, pg_id);
 
     const tokens = generateAuthTokens({
       id: user.id,
