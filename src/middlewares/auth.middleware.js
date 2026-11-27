@@ -128,7 +128,81 @@ export const authorize = (...roles) => {
   };
 };
 
+/**
+ * PG Active Status Guard Middleware.
+ *
+ * Ensures the PG associated with the authenticated user is in `active` status
+ * before allowing access to the route.
+ *
+ * Rules:
+ *  - `super_admin`: always passes (platform-level access).
+ *  - `resident`: always passes (they should still be able to view their own data
+ *     even if the PG is under review / being suspended).
+ *  - `admin`, `staff`, `BRANCH_MANAGER` and all staff roles: blocked if the PG
+ *     status is anything other than `active`.
+ *
+ * Must be placed AFTER `authenticate` (needs `req.user` and `req.pg_id`).
+ *
+ * @example
+ * router.use(authenticate, requireActivePg);
+ * router.use(authenticate, requireActivePg, authorize(ROLES.ADMIN));
+ */
+export const requireActivePg = async (req, res, next) => {
+  try {
+    // super_admin always bypasses this check
+    if (req.user?.role === ROLES.SUPER_ADMIN) {
+      return next();
+    }
+
+    // residents can still access their own data regardless of PG status
+    if (req.user?.role === ROLES.RESIDENT) {
+      return next();
+    }
+
+    const pg_id = req.pg_id;
+
+    if (!pg_id) {
+      throw new AppError(
+        'No PG facility is associated with your account. Please contact your administrator.',
+        HTTP_STATUS.UNAUTHORIZED
+      );
+    }
+
+    const pg = await db('pgs').where({ id: pg_id }).whereNull('deleted_at').first();
+
+    if (!pg) {
+      throw new AppError(
+        'The PG facility linked to your account could not be found.',
+        HTTP_STATUS.UNAUTHORIZED
+      );
+    }
+
+    if (pg.status !== 'active') {
+      const statusMessages = {
+        under_review:
+          'Your PG facility is currently under review by the platform administrator. Access is temporarily restricted.',
+        suspended:
+          'Your PG facility has been suspended. Please contact MYPGPMS support to resolve this.',
+        inactive:
+          'Your PG facility is marked as inactive. Please contact MYPGPMS support to reactivate it.',
+      };
+      const message =
+        statusMessages[pg.status] ||
+        'Your PG facility is not active. Access is restricted.';
+
+      throw new AppError(message, HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    // Attach resolved PG to request for downstream use
+    req.pg = pg;
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
 export default {
   authenticate,
   authorize,
+  requireActivePg,
 };

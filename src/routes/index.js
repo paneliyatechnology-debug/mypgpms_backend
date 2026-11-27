@@ -19,6 +19,7 @@ import dashboardRoutes from './dashboard.routes.js';
 import communityRoutes from './community.routes.js';
 import auditRoutes from './audit.routes.js';
 import { success } from '../utils/apiResponse.js';
+import { authenticate, requireActivePg } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
@@ -33,24 +34,38 @@ router.get('/health', (req, res) => {
   });
 });
 
-// Mount domain routes
+// ─── Public auth routes (login, register, OTP, refresh) ─────────────────────
 router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
-router.use('/stays', stayRoutes);
-router.use('/buildings', buildingRoutes);
-router.use('/rooms', roomRoutes);
-router.use('/payments', paymentRoutes);
-router.use('/visitors', visitorRoutes);
-router.use('/branches', branchRoutes);
+
+// ─── Cron / internal jobs (no pg check needed) ──────────────────────────────
 router.use('/crons', cronRoutes);
-router.use('/food-menu', foodMenuRoutes);
-router.use('/complaints', complaintRoutes);
-router.use('/laundry', laundryRoutes);
-router.use('/subscriptions', subscriptionRoutes);
-router.use('/notices', noticeRoutes);
+
+// ─── PG management routes (super_admin only; no active-pg guard needed) ─────
+// requireActivePg is bypassed for super_admin inside the middleware itself,
+// but we still apply it so admins can only view their own active PG.
 router.use('/pgs', pgRoutes);
-router.use('/dashboard', dashboardRoutes);
-router.use('/community', communityRoutes);
-router.use('/audits', auditRoutes);
+
+// ─── All remaining routes: authenticate → requireActivePg → route handler ───
+//
+// requireActivePg rules (enforced inside the middleware):
+//   • super_admin  → always passes through
+//   • resident     → always passes through
+//   • admin/staff  → blocked with 401 if PG status ≠ 'active'
+//
+router.use('/users',         authenticate, requireActivePg, userRoutes);
+router.use('/stays',         authenticate, requireActivePg, stayRoutes);
+router.use('/buildings',     authenticate, requireActivePg, buildingRoutes);
+router.use('/rooms',         authenticate, requireActivePg, roomRoutes);
+router.use('/payments',      authenticate, requireActivePg, paymentRoutes);
+router.use('/visitors',      authenticate, requireActivePg, visitorRoutes);
+router.use('/branches',      authenticate, requireActivePg, branchRoutes);
+router.use('/food-menu',     authenticate, requireActivePg, foodMenuRoutes);
+router.use('/complaints',    authenticate, requireActivePg, complaintRoutes);
+router.use('/laundry',       authenticate, requireActivePg, laundryRoutes);
+router.use('/subscriptions', authenticate, requireActivePg, subscriptionRoutes);
+router.use('/notices',       authenticate, requireActivePg, noticeRoutes);
+router.use('/dashboard',     authenticate, requireActivePg, dashboardRoutes);
+router.use('/community',     authenticate, requireActivePg, communityRoutes);
+router.use('/audits',        authenticate, requireActivePg, auditRoutes);
 
 export default router;
