@@ -584,10 +584,8 @@ class AuthService {
       email: clean_email,
       message: 'Password reset link has been sent to your email address.',
       expires_in: '15 minutes',
-      ...(config.env === 'development' && {
-        reset_token,
-        reset_url,
-      }),
+      reset_token,
+      reset_url,
     };
   };
 
